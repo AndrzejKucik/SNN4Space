@@ -14,8 +14,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
-__date__ = '2020-12-04'
+__version__ = '0.1.1'
+__date__ = '2020-12-08'
 
 
 # - Image processing and augmentation - #
@@ -66,15 +66,15 @@ def augment(image,
         To adjust brightness by a delta randomly picked in the interval [-max_delta, max_delta). Must be non-negative.
     max_hue_delta : float
         To adjust hue by a delta randomly picked in the interval [-max_delta, max_delta).
-        Must be in the interval [0, .5].
+        Must be in the interval [0., .5].
     lower_contrast : float
-        Lower bound for a random contrast factor. Must be positive
+        Lower bound for a random contrast factor. Must be positive.
     upper_contrast : float
         Upper bound for a random contrast factor. Must be bigger than lower_contrast.
     lower_saturation : float
-        Lower bound for a random saturation factor. Must be positive
+        Lower bound for a random saturation factor. Must be positive.
     upper_saturation : float
-        Upper bound for a random saturation factor. Must be bigger than lower_contrast.
+        Upper bound for a random saturation factor. Must be bigger than lower_saturation.
 
     Returns
     -------
@@ -111,62 +111,10 @@ def augment(image,
     return image
 
 
-def plot_timestep_accuracy(timesteps: list,
-                           accuracies: list,
-                           scale_firing_rates=None,
-                           synapse=None,
-                           show: bool = False):
-    """
-    Plots the accuracy agaibst the number of steps.
-
-    Parameters
-    ----------
-    timesteps : list
-        List of time steps.
-    accuracies
-        List of accuracies.
-    scale_firing_rates :
-        Scaling factor of the spiking neural network (either `None` or floar).
-    synapse :
-        Synapse of the spiking neural network (either `None` or floar).
-    show : bool
-        Whether to display the plot.
-    """
-
-    # Assert that the data list match
-    assert (len(timesteps) == len(accuracies))
-
-    # Rescale to [0, 100]
-    accuracies = [round(100 * n, 2) for n in accuracies]
-
-    # Create the figure
-    plt.figure(figsize=(10, 10), tight_layout=True)
-    plt.plot(timesteps, accuracies, 'bo-')
-    plt.xlabel('Timesteps')
-    plt.ylabel('Accuracy (%)')
-
-    # Title
-    title = 'Spiking model accuracy'
-    if scale_firing_rates:
-        title += ', firing rates scaled by: {}'.format(scale_firing_rates)
-    if synapse:
-        title += ', synapse: {}'.format(synapse)
-    plt.title(title)
-
-    # Make a directory where the figure will be saved
-    try:
-        os.mkdir('plots')
-    except FileExistsError:
-        pass
-
-    # Save the figure
-    plt.savefig('plots/scalefr_{}_synapse_{}.png'.format(scale_firing_rates, synapse))
-    if show:
-        plt.show()
-
-
-def plot_spikes(title: str,
+def plot_spikes(path_to_save: str,
                 examples: tuple,
+                start: int,
+                stop: int,
                 labels: list,
                 simulator,
                 data,
@@ -180,10 +128,14 @@ def plot_spikes(title: str,
 
     Parameters
     ----------
-    title : str
-        Save filename (without extension).
+    path_to_save : str
+        Path to where to save the file.
     examples :
         First element of the tuple are the input images, the second is the output label index
+    start : int
+        Starting index for the examples to display. Must be non-negative
+    stop : int
+        Stopping index for the examples to display. Must have stop > start.
     labels : list
         List of the output labels.
     simulator :
@@ -202,13 +154,15 @@ def plot_spikes(title: str,
         Whether to show the plots.
     """
 
+    assert stop > start >= 0
+
     # Unpack data
     x, y = examples
-    num_examples = len(x)
+    num_examples = stop - start
 
     # plot the results
-    plt.figure(figsize=(30, 10 * num_examples), tight_layout=True)
-    for i in range(num_examples):
+    fig = plt.figure(figsize=(30, 10 * num_examples), tight_layout=True)
+    for i in range(start, stop):
         # Input image
         plt.subplot(num_examples, 3, 3 * i + 1)
         plt.imshow(x[i])
@@ -240,6 +194,10 @@ def plot_spikes(title: str,
         pass
 
     # Save the figure
-    plt.savefig('figs/{}.png'.format(title))
+    plt.savefig(path_to_save)
+
+    # Show
     if show:
         plt.show()
+
+    plt.close(fig=fig)
