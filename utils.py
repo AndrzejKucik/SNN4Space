@@ -14,8 +14,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.1'
-__date__ = '2020-12-08'
+__version__ = '0.1.2'
+__date__ = '2020-12-09'
 
 
 # - Image processing and augmentation - #
@@ -162,16 +162,16 @@ def plot_spikes(path_to_save: str,
 
     # plot the results
     fig = plt.figure(figsize=(30, 10 * num_examples), tight_layout=True)
-    for i in range(start, stop):
+    for i in range(num_examples):
         # Input image
         plt.subplot(num_examples, 3, 3 * i + 1)
-        plt.imshow(x[i])
-        plt.title(labels[y[i]], fontsize=24)
+        plt.imshow(x[start + i])
+        plt.title(labels[y[start + i]], fontsize=24)
         plt.axis('off')
 
         # Sample layer activations
         plt.subplot(num_examples, 3, 3 * i + 2)
-        scaled_data = data[probe][i] * scale
+        scaled_data = data[probe][start + i] * scale
         scaled_data *= 0.001
         plt.plot(range(1, len(scaled_data) + 1), scaled_data)
         rates = np.sum(scaled_data, axis=0) / (n_steps * simulator.dt)
@@ -181,7 +181,7 @@ def plot_spikes(path_to_save: str,
 
         # Output predictions
         plt.subplot(num_examples, 3, 3 * i + 3)
-        plt.plot(range(1, len(scaled_data) + 1), tf.nn.softmax(data[network_output][i]))
+        plt.plot(range(1, len(scaled_data) + 1), tf.nn.softmax(data[network_output][start + i]))
         plt.title('Output predictions', fontsize=24)
         plt.legend(labels, loc='upper left', fontsize=16)
         plt.xlabel('Timestep', fontsize=24)
