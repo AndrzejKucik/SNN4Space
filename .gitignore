@@ -1,4 +1,6 @@
-**/logs
+**/__pycache__
 **/figs
+**/idea
+**/logs
 **/models
 **/plots
