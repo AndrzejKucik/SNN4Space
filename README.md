@@ -160,8 +160,8 @@ In the future, a spiking neural network initialised with the weights obtained by
 [UC Merced Land Use Dataset](http://weegee.vision.ucmerced.edu/datasets/landuse.html) will be further trained in the spiking context. For details on the progress of
 spike-based training see: [SpykeTorch Space](https://github.com/GabrieleMeoni/SpykeTorch_Space).
 
-## Licence
-Property of the European Space Agency. Distributed under MIT licence. See `LICENCE` for more information.
+## License
+Property of the European Space Agency. Distributed under MIT licence. See [`LICENSE`](../master/LICENSE) for more information.
 
 ## Contact
 
