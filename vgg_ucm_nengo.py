@@ -22,8 +22,8 @@ import utils
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.1'
-__date__ = '2020-12-08'
+__version__ = '0.1.2'
+__date__ = '2020-12-09'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.0.0', 'Nengo version is {}, and it should be 3.0.0 instead.'.format(nengo.__version__)
@@ -31,8 +31,9 @@ assert nengo_dl.__version__ == '3.3.0', 'NengoDL version is {}, and it should be
 
 # - Parameters - #
 INPUT_SHAPE = (224, 224, 3)
-NUM_CLASSES = 21
+N_CLASSES = 21
 N_NEURONS = 1000
+N_EXAMPLES = 10
 
 
 # Preprocessing functions
@@ -46,7 +47,7 @@ def main():
     """The main function."""
     # - Argument parser - #
     parser = ArgumentParser()
-    parser.add_argument('-md', '--model_path', type=str, default='', help='Path to the model.')
+    parser.add_argument('-md', '--model_path', type=str, default='', required=True, help='Path to the model.')
     parser.add_argument('-sc', '--firing_rate_scale', type=float, default=1, help='scale factor for the firing rate.')
     parser.add_argument('-syn', '--synapse', type=float, default=None, help='Value of the synapse.')
     parser.add_argument('-t', '--timesteps', type=int, default=1, help='Simulation timesteps.')
@@ -107,7 +108,7 @@ def main():
     global_pool = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     # - Output layer
-    output_layer = tf.keras.layers.Dense(NUM_CLASSES, use_bias=False,
+    output_layer = tf.keras.layers.Dense(N_CLASSES, use_bias=False,
                                          name=model.layers[-1].get_config()['name'])(global_pool)
 
     # - Define the  new model
@@ -161,7 +162,7 @@ def main():
     # Predictions and accuracy
     predictions = np.argmax(data[network_output][:, -1], axis=-1)
     accuracy = (predictions == test_labels[..., 0, 0]).mean()
-    print('Test accuracy: {:.2f}%'.format(100 * accuracy))
+    print('Test accuracy: {:.2f}% (firing rate scale factor: {}, synapse: {}).'.format(100 * accuracy, scale, synapse))
 
     # Plot the spikes against the timesteps
     model_name = os.path.split(path_to_model)[1][:-3]
@@ -172,12 +173,11 @@ def main():
     except FileExistsError:
         pass
 
-    for i in range(0, 10, 2):
-        print(path_to_figures + '/acc_{}_{}.png'.format(accuracy, i))
+    for i in range(0, N_EXAMPLES, 2):
         utils.plot_spikes(path_to_save=path_to_figures + '/acc_{}_{}.png'.format(accuracy, i),
                           examples=((255 * x_test).astype('uint8'), y_test),
                           start=i,
-                          stop=i+2,
+                          stop=i + 2,
                           labels=info.features['label'].names,
                           simulator=sim,
                           data=data,
