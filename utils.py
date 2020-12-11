@@ -14,8 +14,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.2'
-__date__ = '2020-12-09'
+__version__ = '0.1.3'
+__date__ = '2020-12-11'
 
 
 # - Image processing and augmentation - #
@@ -156,7 +156,7 @@ def plot_spikes(path_to_save: str,
 
     assert stop > start >= 0
 
-    # Unpack data
+    # Unpack the data
     x, y = examples
     num_examples = stop - start
 
@@ -196,8 +196,113 @@ def plot_spikes(path_to_save: str,
     # Save the figure
     plt.savefig(path_to_save)
 
-    # Show
+    # Show the figure
     if show:
         plt.show()
 
+    # And close it
     plt.close(fig=fig)
+
+
+def plot_timestep_accuracy(synapses: list,
+                           scales: list,
+                           timesteps: list,
+                           accuracies,
+                           x_logscale: bool = False,
+                           y_logscale: bool = False,
+                           show: bool = False):
+    """
+    Plots the accuracy agaist the number of time steps, with respect to different levels of synapse and firing rate.
+
+    Parameters
+    ----------
+    synapses : list
+        List of synapse values. Must be non-empty.
+    scales : list
+        List of firing rate scaling factors. Must be non-empty.
+    timesteps :
+        List of time steps. Must be non-empty.
+    accuracies : ndarray
+        Accuracy level corresponding to respective parameters.
+        Axis 0 corresponds to synapses, axis 1 to firing rate scales, axis 2 to timesteps.
+    x_logscale : bool
+        `True` if the x-axis should be logarithmic.
+    y_logscale : bool
+        `True` if the y-axis should be logarithmic.
+    show : bool
+        Whether to display the plot.
+    """
+
+    # Markers and colours
+    markers = ['v', 'o', '*', 's', 'P']
+    colours = ['m', 'c', 'r', 'g', 'b']
+
+    # Assertions
+    assert 0 < len(synapses) == accuracies.shape[0] <= len(markers)
+    assert 0 < len(scales) == accuracies.shape[1] <= len(colours)
+    assert 0 < len(timesteps) == accuracies.shape[2]
+    assert 0. <= np.min(accuracies) < np.max(accuracies) <= 1.
+
+    # Figure
+    fig = plt.figure(figsize=(3 * len(timesteps), 10), tight_layout=True)
+
+    # Plot data
+    for n in range(len(scales)):
+        colour = colours[n]
+        for m in range(len(synapses)):
+            marker = markers[m]
+            plt.plot(timesteps, accuracies[m, n], colour + marker + ':', markersize=12,
+                     label='Scale: {}, synapse: {}'.format(scales[n], synapses[m]))
+
+    # Format the plot
+    # - Axes labels
+    plt.xlabel('Time steps')
+    plt.ylabel('Accuracy')
+
+    # - Ticks
+    plt.xticks(timesteps, timesteps)
+    y_ticks = np.linspace(np.min(accuracies), np.max(accuracies), 10)
+
+    # - Log scale conditionals
+    if x_logscale:
+        plt.xscale('log')
+        plt.xlabel('Time steps (log scale)')
+    if y_logscale:
+        assert 0. < np.min(accuracies)
+        plt.yscale('log')
+        plt.ylabel('Accuracy (log scale)')
+        y_ticks = np.logspace(np.min(accuracies), np.max(accuracies), 10, base=np.min(accuracies))
+
+    # - Ticks again
+    plt.yticks(y_ticks, ['{:.0f}%'.format(100 * n) for n in y_ticks])
+
+    # - Miscellaneous
+    plt.title('Time-step accuracy for selected synapses and firing rate factors')
+    plt.legend()
+    plt.grid()
+
+    # Make the directory for the plot
+    try:
+        os.mkdir('plots')
+    except FileExistsError:
+        pass
+
+    # Save the figure
+    plt.savefig('./plots/timestep_acc.png')
+
+    # Display the figure
+    if show:
+        plt.show()
+
+    # And close it
+    plt.close(fig=fig)
+
+
+if __name__ == '__main__':
+    plot_timestep_accuracy(synapses=[.001, .005, .01],
+                           scales=[5, 10, 50, 100, 500],
+                           timesteps=[5, 10, 50, 100, 500],
+                           accuracies=np.load('acc.npy'),
+                           x_logscale=True,
+                           y_logscale=False,
+                           show=True)
