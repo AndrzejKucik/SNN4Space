@@ -85,9 +85,7 @@ in the validation loss after 100 and 50 consecutive epochs respectively.
 To train the network run:
 
 ```
-python vgg_ucm.py [-s seed] [-e epochs] [-bs batch_size] [-drpt dropout] [-kl2 kernel_l2] [-bl1 bias_l1] [-mbd max_brightness_delta]
-[-mhd max_hue_delta] [-lc lower_contrast] [-uc upper contrast] [-ls lower_saturation] [-us upper saturation]
-
+python vgg_ucm.py [-s seed] [-e epochs] [-bs batch_size] [-drpt dropout] [-kl2 kernel_l2] [-bl1 bias_l1] [-mbd max_brightness_delta] [-mhd max_hue_delta] [-lc lower_contrast] [-uc upper_contrast] [-ls lower_saturation] [-us upper_saturation]
 ```
 
 where the optional arguments are:
@@ -100,9 +98,9 @@ where the optional arguments are:
 * `max_brightness_delta`
 * `max_hue_delta`
 * `lower_contrast`
-* `upper contrast`
+* `upper_contrast`
 * `lower_saturation`
-* `upper saturation`
+* `upper_saturation`
 
 The default values of these parameters are the ones that empirically gave us the best test accuracy performance (91.43%). The original
 [VGG-16](https://neurohive.io/en/popular-networks/vgg16/) model uses bias terms, which are not very biologically plausible, so we penalize them using L<sub>1</sub>
@@ -110,8 +108,7 @@ regularization. We also use  L<sub>2</sub> regularization for the convolutional 
 
 The trained model is saved to 
 ```
-./models/s_{seed}_e_{epochs}_bs_{batch_size}_drpt_{dropout}_kl2_{kernel_l2}_bl1_{bias_l1}_mbd_{max_brightness_delta}_
-mhd_{max_hue_delta}_ls_{lower_contrast}_uc_{upper contrast}_ls_{lower_saturation}_us_{upper saturation}.h5
+./models/s_{seed}_e_{epochs}_bs_{batch_size}_drpt_{dropout}_kl2_{kernel_l2}_bl1_{bias_l1}_mbd_{max_brightness_delta}_mhd_{max_hue_delta}_ls_{lower_contrast}_uc_{upper_contrast}_ls_{lower_saturation}_us_{upper_saturation}.h5
 ```
 
 where each `{name}`is replace by the corresponding value of `name`.
@@ -135,6 +132,8 @@ where
 * `synapse` is the neurons' synapse value (float).
 * `timesteps` is the number of timesteps of the simulation (int).
 
+![Sample spikes](../master/sample_spikes.png)
+
 After the conversion and simulation five sample figures showing two input examples together with the spiking activity of the global pooling and the final dense layers plotted
 against the timesteps will be saved to
 
@@ -142,12 +141,13 @@ against the timesteps will be saved to
 ./figs/{model_name}/scale_{scale}/synapse_{synapse}/timesteps_{timesteps}/acc_{accuracy}_{i}.png
 ```
 
-where `{model_name}`is the name of
-the model `.h5`file (without the extension), `{accuracy}`is its numerical accuracy on the test set, `{i}` is the data slice index, and the remaining parameters are as in the
-item list above.
+where `{model_name}`is the name of the model `.h5`file (without the extension), `{accuracy}`is its numerical accuracy on the test set, `{i}` is the data slice index, and the remaining parameters are as in the item list above.
 
-Generally, the spiking model accuracy is very sensitive to the parameters' choice. For example, running the model which achieves 91.43% accuracy in the frame-based context,
-we get that the corresponding spiking neural network simulated for 200 time steps achieves the following level of accuracy (with respect to other parameters):
+The spiking model accuracy is very sensitive to the parameters' choice. The accuracy of the models generally increases with the length of the simulation. The increase seems to be the most significant fot the models high friting rate scale factors. For example, running the model, which achieves 91.43% accuracy in the frame-based context, we see that:
+
+![Timestep accuracy](../master/timestep_accuracy.png)
+
+This observation remains true even if we fix the simulation time (here for 200 time steps), and evaluate it against the synapse level and the firing rate factor:
 
 | **Synapse\Firing rate scale** |100     | 250    | 500    | 750    | 1000   |
 |-------------------------------|--------|--------|--------|--------|--------|
