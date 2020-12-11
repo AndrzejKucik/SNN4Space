@@ -22,8 +22,8 @@ import utils
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.2'
-__date__ = '2020-12-09'
+__version__ = '0.1.3'
+__date__ = '2020-12-11'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.0.0', 'Nengo version is {}, and it should be 3.0.0 instead.'.format(nengo.__version__)
@@ -174,7 +174,7 @@ def main():
         pass
 
     for i in range(0, N_EXAMPLES, 2):
-        utils.plot_spikes(path_to_save=path_to_figures + '/acc_{}_{}.png'.format(accuracy, i),
+        utils.plot_spikes(path_to_save=path_to_figures + '/acc_{}_{}.png'.format(accuracy, i//2),
                           examples=((255 * x_test).astype('uint8'), y_test),
                           start=i,
                           stop=i + 2,
