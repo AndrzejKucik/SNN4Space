@@ -1,11 +1,15 @@
 #!/usr/bin/env python3.6
 
-"""Converts a Tensorflow model trained on the UC merced dataset into a Nengo spiking neural network and evaluates it."""
+"""
+Converts a Tensorflow model trained on the EuroSAT or UC Merced dataset into a Nengo spiking neural network and
+evaluates it.
+"""
 
 # -- Built-in modules -- #
 from argparse import ArgumentParser
 from datetime import timedelta
 import os
+from pathlib import Path
 from time import time
 
 # -- Third-party modules -- #
@@ -13,11 +17,11 @@ import nengo
 import nengo_dl
 import numpy as np
 import tensorflow as tf
-import tensorflow_datasets as tfds
 
 # -- Proprietary modules -- '
+from dataloaders import load_eurosat, load_ucm
 import utils
-from load_datasets import load_eurosat, load_ucm
+
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
@@ -45,7 +49,7 @@ def main():
     parser.add_argument('-t', '--timesteps', type=int, default=1, help='Simulation timesteps.')
 
     args = vars(parser.parse_args())
-    path_to_model = args['model_path']
+    path_to_model = Path(args['model_path'])
     scale = args['firing_rate_scale']
     synapse = args['synapse']
     timesteps = args['timesteps']
@@ -145,7 +149,7 @@ def main():
     network_input = converter.inputs[input_layer]
     network_output = converter.outputs[output_layer]
 
-    # global_ppol probe
+    # global_pool probe
     sample_neurons = np.linspace(0, np.prod(global_pool.shape[1:]), N_NEURONS, endpoint=False, dtype=np.int32)
     with converter.net:
         probe = nengo.Probe(converter.layers[global_pool][sample_neurons])
@@ -173,16 +177,16 @@ def main():
     print('Test accuracy: {:.2f}% (firing rate scale factor: {}, synapse: {}).'.format(100 * accuracy, scale, synapse))
 
     # Plot the spikes against the timesteps
-    model_name = os.path.split(path_to_model)[1][:-3]
-    path_to_figures = 'figs/' + model_name + '/scale_{}/synapse_{}/timesteps_{}'.format(scale, synapse, timesteps)
-
-    try:
-        os.makedirs(path_to_figures)
-    except FileExistsError:
-        pass
+    model_name = path_to_model.stem
+    path_to_figures = Path('figs/vgg16').joinpath(dataset,
+                                                  model_name,
+                                                  'scale_{}'.format(scale),
+                                                  'synapse_{}'.format(synapse),
+                                                  'timesteps_{}'.format(timesteps))
+    os.makedirs(path_to_figures, exist_ok=True)
 
     for i in range(0, N_EXAMPLES, 2):
-        utils.plot_spikes(path_to_save=path_to_figures + '/acc_{}_{}.png'.format(accuracy, i // 2),
+        utils.plot_spikes(path_to_save=path_to_figures.joinpath('acc_{}_{}.png'.format(accuracy, i // 2)),
                           examples=((255 * x_test).astype('uint8'), y_test),
                           start=i,
                           stop=i + 2,
