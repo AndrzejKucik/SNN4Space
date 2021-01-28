@@ -14,8 +14,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.3'
-__date__ = '2020-12-11'
+__version__ = '0.1.4'
+__date__ = '2021-01-28'
 
 
 # - Image processing and augmentation - #
@@ -296,13 +296,3 @@ def plot_timestep_accuracy(synapses: list,
 
     # And close it
     plt.close(fig=fig)
-
-
-if __name__ == '__main__':
-    plot_timestep_accuracy(synapses=[.001, .005, .01],
-                           scales=[5, 10, 50, 100, 500],
-                           timesteps=[5, 10, 50, 100, 500],
-                           accuracies=np.load('acc.npy'),
-                           x_logscale=True,
-                           y_logscale=False,
-                           show=True)
