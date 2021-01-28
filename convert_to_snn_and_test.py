@@ -17,30 +17,22 @@ import tensorflow_datasets as tfds
 
 # -- Proprietary modules -- '
 import utils
+from load_datasets import load_eurosat, load_ucm
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.3'
-__date__ = '2020-12-11'
+__version__ = '0.2.0'
+__date__ = '2021-01-28'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.0.0', 'Nengo version is {}, and it should be 3.0.0 instead.'.format(nengo.__version__)
 assert nengo_dl.__version__ == '3.3.0', 'NengoDL version is {}, and it should be 3.3.0'.format(nengo_dl.__version__)
 
 # - Parameters - #
-INPUT_SHAPE = (224, 224, 3)
-N_CLASSES = 21
 N_NEURONS = 1000
 N_EXAMPLES = 10
-
-
-# Preprocessing functions
-def preprocess(image, label):
-    """Rescales and resizes the input images."""
-
-    return utils.rescale_resize(image, INPUT_SHAPE[:-1]), label
 
 
 def main():
@@ -58,18 +50,6 @@ def main():
     synapse = args['synapse']
     timesteps = args['timesteps']
 
-    # Load data
-    (_, _, ucm_test), info = tfds.load('uc_merced',
-                                       split=['train[:80%]', 'train[80%:90%]', 'train[90%:]'],
-                                       with_info=True,
-                                       as_supervised=True)
-
-    # Number of test examples
-    test_size = int(info.splits['train'].num_examples * .1)
-
-    # Apply preprocessing function
-    ucm_test = ucm_test.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
     # Load model
     try:
         model = tf.keras.models.load_model(filepath=path_to_model)
@@ -78,9 +58,26 @@ def main():
     except OSError:
         exit('Invalid model path!')
 
+    # Paramters
+    input_shape = model.input.shape[1:]
+    num_classes = model.output.shape[-1]
+    if input_shape == (64, 64, 3) and num_classes == 10:
+        dataset = 'eurosat'
+    elif input_shape == (224, 224, 3) and num_classes == 21:
+        dataset = 'ucm'
+    else:
+        exit("Invalid model!")
+
+        # Preprocessing function
+
+    def preprocess(image, label):
+        """Rescales and resizes the input images."""
+
+        return utils.rescale_resize(image, input_shape[:-1]), label
+
     # Nengo does not like regularization and dropout so we have to create a new model without them
     # - Input layer
-    input_layer = tf.keras.Input(shape=INPUT_SHAPE)
+    input_layer = tf.keras.Input(shape=input_shape)
 
     # - First convolutional layer
     config = model.layers[1].get_config()
@@ -108,7 +105,7 @@ def main():
     global_pool = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     # - Output layer
-    output_layer = tf.keras.layers.Dense(N_CLASSES, use_bias=False,
+    output_layer = tf.keras.layers.Dense(num_classes, use_bias=False,
                                          name=model.layers[-1].get_config()['name'])(global_pool)
 
     # - Define the  new model
@@ -123,15 +120,26 @@ def main():
     # Show model's summary
     model.summary()
 
+    # Load data
+    if dataset == 'eurosat':
+        _, _, x_test, labels = load_eurosat()
+        num_test = 2700
+    else:  # dataset == 'ucm`
+        _, _, x_test, labels = load_ucm()
+        num_test = 210
+
+    # Apply preprocessing function
+    x_test = x_test.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
     # Evaluate the model
-    loss, acc = model.evaluate(x=ucm_test.batch(test_size))
+    loss, acc = model.evaluate(x=x_test.batch(num_test))
     print('Model accuracy: {:.2f}%.'.format(acc * 100))
 
     # Convert to a Nengo network
     converter = nengo_dl.Converter(new_model,
                                    scale_firing_rates=scale,
                                    synapse=synapse,
-                                   swap_activations={tf.nn.relu: nengo.SpikingRectifiedLinear()})
+                                   swap_activations={tf.nn.relu: nengo.LIF()})
 
     # Input and output objects
     network_input = converter.inputs[input_layer]
@@ -144,7 +152,7 @@ def main():
         nengo_dl.configure_settings(stateful=False)
 
     # Convert the test data from tf.dataset to numpy arrays
-    test_data = [(n[0].numpy(), n[1].numpy()) for n in ucm_test.take(test_size)]
+    test_data = [(n[0].numpy(), n[1].numpy()) for n in x_test.take(num_test)]
     x_test = np.array([n[0] for n in test_data])
     y_test = np.array([n[1] for n in test_data])
 
@@ -174,11 +182,11 @@ def main():
         pass
 
     for i in range(0, N_EXAMPLES, 2):
-        utils.plot_spikes(path_to_save=path_to_figures + '/acc_{}_{}.png'.format(accuracy, i//2),
+        utils.plot_spikes(path_to_save=path_to_figures + '/acc_{}_{}.png'.format(accuracy, i // 2),
                           examples=((255 * x_test).astype('uint8'), y_test),
                           start=i,
                           stop=i + 2,
-                          labels=info.features['label'].names,
+                          labels=labels,
                           simulator=sim,
                           data=data,
                           probe=probe,
