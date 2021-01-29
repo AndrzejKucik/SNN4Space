@@ -27,12 +27,12 @@ import utils
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.0'
-__date__ = '2021-01-28'
+__version__ = '0.2.1'
+__date__ = '2021-01-29'
 
 # - Assertions to ensure modules compatibility - #
-assert nengo.__version__ == '3.0.0', 'Nengo version is {}, and it should be 3.0.0 instead.'.format(nengo.__version__)
-assert nengo_dl.__version__ == '3.3.0', 'NengoDL version is {}, and it should be 3.3.0'.format(nengo_dl.__version__)
+assert nengo.__version__ == '3.1.0', 'Nengo version is {}, and it should be 3.1.0 instead.'.format(nengo.__version__)
+assert nengo_dl.__version__ == '3.4.0', 'NengoDL version is {}, and it should be 3.4.0'.format(nengo_dl.__version__)
 
 # - Parameters - #
 N_NEURONS = 1000
