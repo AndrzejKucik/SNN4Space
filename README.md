@@ -24,10 +24,10 @@ In particular, the current implementation converts a [VGG-16](https://neurohive.
 This project uses [Python](https://www.python.org/) 3.6, and requires the following third party libraries:
 * [NumPy](https://numpy.org/) 1.18.5
 * [Matplotlib](https://matplotlib.org/) 3.3.3
-* [TensorFlow](https://www.tensorflow.org/) 2.3.1
+* [TensorFlow](https://www.tensorflow.org/) 2.4.1
 * [TensorFlow Datasets](https://www.tensorflow.org/datasets) 4.1.0
-* [Nengo](https://www.nengo.ai/nengo/) 3.0.0
-* [NengoDL](https://www.nengo.ai/nengo-dl/) 3.3.0
+* [Nengo](https://www.nengo.ai/nengo/) 3.1.0
+* [NengoDL](https://www.nengo.ai/nengo-dl/) 3.4.0
 
 Different versions of Nengo packages will raise assertion errors. This is because there are compatibility issues between newer versions of
 [Nengo](https://www.nengo.ai/nengo/) and the current [NengoDL](https://www.nengo.ai/nengo-dl/) (at the time or writing this). No issues related to using different versions of
@@ -35,7 +35,7 @@ the other libraries was encountered. Nonetheless, recommend creating a separate 
 [NumPy](https://numpy.org/) can be acquired by installing the [Anaconda](https://www.anaconda.com/) distribution of [Python](https://www.python.org/).
 Alternatively, all the required libraries can be installed using `pip`:
 
-```pip install numpy==1.18.5 matplotlib==3.3.3 tensorflow==2.3.1 tensorflow-datasets==4.1.0 nengo==3.0.0 nengo-dl==3.3.0```
+```pip install numpy==1.18.5 matplotlib==3.3.3 tensorflow==2.4.1 tensorflow-datasets==4.1.0 nengo==3.1.0 nengo-dl==3.4.0```
 
 ## Installation
 
