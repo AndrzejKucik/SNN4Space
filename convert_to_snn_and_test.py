@@ -22,13 +22,12 @@ import tensorflow as tf
 from dataloaders import load_eurosat, load_ucm
 import utils
 
-
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.1'
-__date__ = '2021-01-29'
+__version__ = '0.2.2'
+__date__ = '2021-02-01'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.1.0', 'Nengo version is {}, and it should be 3.1.0 instead.'.format(nengo.__version__)
@@ -39,6 +38,7 @@ N_NEURONS = 1000
 N_EXAMPLES = 10
 
 
+# noinspection PyUnboundLocalVariable
 def main():
     """The main function."""
     # - Argument parser - #
@@ -72,8 +72,7 @@ def main():
     else:
         exit("Invalid model!")
 
-        # Preprocessing function
-
+    # Preprocessing function
     def preprocess(image, label):
         """Rescales and resizes the input images."""
 
@@ -125,6 +124,7 @@ def main():
     model.summary()
 
     # Load data
+    # noinspection PyUnboundLocalVariable
     if dataset == 'eurosat':
         _, _, x_test, labels = load_eurosat()
         num_test = 2700
