@@ -67,7 +67,7 @@ In the first part of the project we download either the [EuroSAT: Land Use and L
 To train the network run:
 
 ```
-python train_models.py [-ds dataset] [-s seed] [-e epochs] [-bs batch_size] [-drpt dropout] [-kl2 kernel_l2] [-bl1 bias_l1] [-mbd max_brightness_delta] [-mhd max_hue_delta] [-lc lower_contrast] [-uc upper_contrast] [-ls lower_saturation] [-us upper_saturation]
+python train_models.py [-ds dataset] [-s seed] [-e epochs] [-bs batch_size] [-drpt dropout] [-kl2 kernel_l2] [-bl1 bias_l1] [-lz lower_zoom] [-uz upper_zoom] [-mbd max_brightness_delta] [-mhd max_hue_delta] [-lc lower_contrast] [-uc upper_contrast] [-ls lower_saturation] [-us upper_saturation]
 ```
 
 where the optional arguments are:
@@ -78,6 +78,8 @@ where the optional arguments are:
 * `dropout` - dropout factor; ust be in \[0, 1),
 * `kernel_l2` - regularization L<sub>2</sub> parameter for the convolutional kernels,
 * `bl1 bias_l1` - regularization L<sub>1</sub> parameter for the convolutional biases,
+* `lower_zoom` - augmentation parameter; lower bound for a random zoom factor; must be positive,
+* `upper_zoom` - augmentation parameter; upper bound for a random zoom factor; must be bigger than `lower_zoom`.
 * `max_brightness_delta` - augmentation parameter; maximum brightness delta; must be a non-negative float,
 * `max_hue_delta` - augmentation parameter; aximum hue delta; must be in the interval \[0, 0.5\],
 * `lower_contrast` - augmentation parameter; lower bound for a random contrast factor; must be positive,
@@ -89,7 +91,7 @@ The default values of these parameters are the ones that empirically gave us the
 
 The trained model is saved to 
 ```
-./models/vgg16/{dataset}/s_{seed}_e_{epochs}_bs_{batch_size}_drpt_{dropout}_kl2_{kernel_l2}_bl1_{bias_l1}_mbd_{max_brightness_delta}_mhd_{max_hue_delta}_ls_{lower_contrast}_uc_{upper_contrast}_ls_{lower_saturation}_us_{upper_saturation}.h5
+./models/vgg16/{dataset}/s_{seed}_e_{epochs}_bs_{batch_size}_drpt_{dropout}_kl2_{kernel_l2}_bl1_{bias_l1}_lz_{lower_zoom}_uz_{upper_zoom}_mbd_{max_brightness_delta}_mhd_{max_hue_delta}_ls_{lower_contrast}_uc_{upper_contrast}_ls_{lower_saturation}_us_{upper_saturation}.h5
 ```
 
 where each `{name}`is replace by the corresponding value of `name`.
