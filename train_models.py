@@ -20,7 +20,7 @@ from utils import augment, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 __date__ = '2021-02-01'
 
 # - Argument parser - #
@@ -112,6 +112,7 @@ MODEL_FILEPATH = Path('models/vgg16').joinpath(DATASET)
 os.makedirs(MODEL_FILEPATH, exist_ok=True)
 MODEL_FILEPATH = MODEL_FILEPATH.joinpath('s_{}_e_{}_bs_{}_lr_{}'.format(SEED, EPOCHS, BATCH_SIZE, LR)
                                          + '_drpt_{}_kl2_{}_bl1_{}'.format(DROPOUT, KERNEL_L2, BIAS_L1)
+                                         + '_lz_{}_uz_{}'.format(LOWER_ZOOM, UPPER_ZOOM)
                                          + '_mbd_{}_mhd_{}'.format(MAX_BRIGHTNESS_DELTA, MAX_HUE_DELTA)
                                          + '_lc_{}_uc_{}'.format(LOWER_CONTRAST, UPPER_CONTRAST)
                                          + '_ls_{}_us_{}.h5'.format(LOWER_SATURATION, UPPER_SATURATION))
