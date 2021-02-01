@@ -12,6 +12,7 @@ from pathlib import Path
 import tensorflow as tf
 
 # -- Proprietary modules -- #
+from create_models import create_vgg16_model
 from dataloaders import load_ucm, load_eurosat
 from utils import augment, rescale_resize
 
@@ -19,8 +20,8 @@ from utils import augment, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.0'
-__date__ = '2021-01-28'
+__version__ = '0.2.1'
+__date__ = '2021-02-01'
 
 # - Argument parser - #
 parser = ArgumentParser()
@@ -33,12 +34,17 @@ parser.add_argument('-e', '--epochs', type=int, default=1000, help='Number of tr
 parser.add_argument('-bs', '--batch_size', type=int, default=105, help='Batch size (per replica).')
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help='Learning rate.')
 # -- Model parameters
-parser.add_argument('-drpt', '--dropout', type=float, default=0, help='Dropout factor.Must be in [0, 1)')
+parser.add_argument('-drpt', '--dropout', type=float, default=0, help='Dropout factor. Must be in [0, 1)')
 parser.add_argument('-kl2', '--kernel_l2', type=float, default=1e-4,
                     help='Regularization L2 parameter for the convolutional kernels.')
 parser.add_argument('-bl1', '--bias_l1', type=float, default=1e-5,
                     help='Regularization L1 parameter for the convolutional biases.')
 # -- Augmentation parameters
+parser.add_argument('-lz', '--lower_zoom', type=float, default=.95,
+                    help='Augmentation parameter. Lower bound for a random zoom factor. Must be positive.')
+parser.add_argument('-uz', '--upper_zoom', type=float, default=1.05,
+                    help='Augmentation parameter. Upper bound for a random zoom factor. '
+                         + 'Must be bigger than lower_zoom.')
 parser.add_argument('-mbd', '--max_brightness_delta', type=float, default=.2,
                     help='Augmentation parameter. Maximum brightness delta. Must be a non-negative float.')
 parser.add_argument('-mhd', '--max_hue_delta', type=float, default=.1,
@@ -69,6 +75,8 @@ DROPOUT = args['dropout']
 KERNEL_L2 = args['kernel_l2']
 BIAS_L1 = args['bias_l1']
 # -- Augmentation parameters
+LOWER_ZOOM = args['lower_zoom']
+UPPER_ZOOM = args['upper_zoom']
 MAX_BRIGHTNESS_DELTA = args['max_brightness_delta']
 MAX_HUE_DELTA = args['max_hue_delta']
 LOWER_CONTRAST = args['lower_contrast']
@@ -80,13 +88,13 @@ UPPER_SATURATION = args['upper_saturation']
 if DATASET == 'eurosat':
     INPUT_SHAPE = (64, 64, 3)
     NUM_CLASSES = 10
-    BUFFER_SIZE = 21600
 elif DATASET == 'ucm':
     INPUT_SHAPE = (224, 224, 3)
     NUM_CLASSES = 21
-    BUFFER_SIZE = 1680
 else:
     exit('Invalid dataset!')
+
+BUFFER_SIZE = 1680
 
 # Set the seed for reproducibility
 tf.random.set_seed(seed=SEED)
@@ -102,10 +110,10 @@ BATCH_SIZE = BATCH_PER_REPLICA * NUM_DEVICES
 # Model filepath #
 MODEL_FILEPATH = Path('models/vgg16').joinpath(DATASET)
 os.makedirs(MODEL_FILEPATH, exist_ok=True)
-MODEL_FILEPATH = MODEL_FILEPATH.joinpath('s_{}_e_{}_bs_{}_lr_{}'.format(SEED, EPOCHS, BATCH_SIZE, LR) \
-                                         + '_drpt_{}_kl2_{}_bl1_{}'.format(DROPOUT, KERNEL_L2, BIAS_L1) \
-                                         + '_mbd_{}_mhd_{}'.format(MAX_BRIGHTNESS_DELTA, MAX_HUE_DELTA) \
-                                         + '_lc_{}_uc_{}'.format(LOWER_CONTRAST, UPPER_CONTRAST) \
+MODEL_FILEPATH = MODEL_FILEPATH.joinpath('s_{}_e_{}_bs_{}_lr_{}'.format(SEED, EPOCHS, BATCH_SIZE, LR)
+                                         + '_drpt_{}_kl2_{}_bl1_{}'.format(DROPOUT, KERNEL_L2, BIAS_L1)
+                                         + '_mbd_{}_mhd_{}'.format(MAX_BRIGHTNESS_DELTA, MAX_HUE_DELTA)
+                                         + '_lc_{}_uc_{}'.format(LOWER_CONTRAST, UPPER_CONTRAST)
                                          + '_ls_{}_us_{}.h5'.format(LOWER_SATURATION, UPPER_SATURATION))
 
 
@@ -116,11 +124,13 @@ def preprocess(image, label):
     return rescale_resize(image, INPUT_SHAPE[:-1]), label
 
 
-def preprocess_with_aug(image, label):
-    """Rescales, resizes and augments the input images."""
+def random_preprocess(image, label):
+    """Randomly augments the input images."""
 
     image = augment(image=image,
                     image_size=INPUT_SHAPE[:-1],
+                    lower_zoom=LOWER_ZOOM,
+                    upper_zoom=UPPER_ZOOM,
                     max_brightness_delta=MAX_BRIGHTNESS_DELTA,
                     max_hue_delta=MAX_HUE_DELTA,
                     lower_contrast=LOWER_CONTRAST,
@@ -129,77 +139,6 @@ def preprocess_with_aug(image, label):
                     upper_saturation=UPPER_SATURATION)
 
     return image, label
-
-
-def create_model(input_shape: tuple = INPUT_SHAPE,
-                 num_classes: int = NUM_CLASSES,
-                 kernel_l2: float = KERNEL_L2,
-                 bias_l1: float = BIAS_L1,
-                 dropout: float = DROPOUT,
-                 lr: float = LR):
-    """Creates a Keras model which is a modified version of the VGG16 network."""
-
-    # Load the VGG16 model (this may take a moment for the first time)
-    vgg16 = tf.keras.applications.VGG16(include_top=False, weights='imagenet', input_shape=input_shape)
-
-    with STRATEGY.scope():
-        # Create new model
-        # - Input layer
-        input_layer = tf.keras.Input(shape=input_shape)
-
-        # - First convolutional layer
-        config = vgg16.layers[1].get_config()
-        filters, kernel_size, name = config['filters'], config['kernel_size'], config['name']
-        # -- We keep the same number of filters and the kernel size but change the activation format and add
-        # -- kernel and bias regularizers
-        x = tf.keras.layers.Conv2D(filters=filters,
-                                   kernel_size=kernel_size,
-                                   padding='same',
-                                   activation=tf.nn.relu,
-                                   kernel_regularizer=tf.keras.regularizers.l2(kernel_l2),
-                                   bias_regularizer=tf.keras.regularizers.l1(bias_l1),
-                                   name=name)(input_layer)
-
-        # - The remaining layers
-        for layer in vgg16.layers[2:-1]:
-            try:
-                config = layer.get_config()
-                filters, kernel_size, name = config['filters'], config['kernel_size'], config['name']
-                x = tf.keras.layers.Conv2D(filters=filters,
-                                           kernel_size=kernel_size,
-                                           padding='same',
-                                           activation=tf.nn.relu,
-                                           kernel_regularizer=tf.keras.regularizers.l2(kernel_l2),
-                                           bias_regularizer=tf.keras.regularizers.l1(bias_l1),
-                                           name=name)(x)
-            except KeyError:
-                # -- Change the max pooling to average pooling
-                x = tf.keras.layers.AveragePooling2D((2, 2))(x)
-                # -- Add dropout if necessary
-                if DROPOUT > 0.:
-                    x = tf.keras.layers.Dropout(dropout)(x)
-
-        # - Conclude VGG layers with a global average pooling layer
-        global_pool = tf.keras.layers.GlobalAveragePooling2D()(x)
-
-        # - Output layer
-        output_layer = tf.keras.layers.Dense(num_classes, use_bias=False)(global_pool)
-
-        # - Define the model
-        model = tf.keras.Model(input_layer, output_layer)
-
-        # - After the model is defined, we can load the weights
-        for layer in model.layers:
-            if isinstance(layer, tf.keras.layers.Conv2D):
-                weights = vgg16.get_layer(name=layer.name).get_weights()
-                layer.set_weights(weights)
-
-        # - Compile the model
-        model.compile(optimizer=tf.keras.optimizers.RMSprop(lr),
-                      loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
-                      metrics=tf.metrics.SparseCategoricalAccuracy())
-
-    return model
 
 
 # Main
@@ -212,18 +151,33 @@ def main():
     else:  # DATASET == 'ucm'
         x_train, x_val, x_test, _ = load_ucm()
 
-    # Apply preprocessing functions (no augmentation for the validation and test sets)
-    x_train = x_train.map(preprocess_with_aug, num_parallel_calls=tf.data.experimental.AUTOTUNE).shuffle(BUFFER_SIZE)
-    x_val = x_val.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    # Apply preprocessing functions (no augmentation for the validation and test sets) after caching to avoid caching
+    # randomness
+    x_train = x_train.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
+    x_val = x_val.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
     x_test = x_test.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    # Prefetch the data
+    # Apply random transforms after caching
+    x_train = x_train.shuffle(BUFFER_SIZE).map(random_preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    # Prefetch the data and apply random transformations
     x_train = x_train.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
     x_val = x_val.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
     x_test = x_test.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
 
-    # Create model
-    model = create_model()
+    # Compile the model
+    with STRATEGY.scope():
+        # Create model
+        model = create_vgg16_model(input_shape=INPUT_SHAPE,
+                                   kernel_l2=KERNEL_L2,
+                                   bias_l1=BIAS_L1,
+                                   dropout=DROPOUT,
+                                   num_classes=NUM_CLASSES)
+
+        # Compile the model
+        model.compile(optimizer=tf.keras.optimizers.RMSprop(LR),
+                      loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
+                      metrics=tf.metrics.SparseCategoricalAccuracy())
 
     # Show the summary of the model
     model.summary()
