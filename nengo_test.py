@@ -1,7 +1,7 @@
 #!/usr/bin/env python3.6
 
 """Testing a conversion of a Keras model into a Nengo network, and evaluating its performance on the MNIST dataset.
-   Losely based on: https://www.nengo.ai/nengo-dl/examples/keras-to-snn.html"""
+   Loosely based on: https://www.nengo.ai/nengo-dl/examples/keras-to-snn.html"""
 
 # -- Built-in modules -- #
 import datetime
@@ -17,8 +17,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.1'
-__date__ = '2021-01-29'
+__version__ = '0.1.2'
+__date__ = '2021-02-01'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.1.0', 'Nengo version is {}, and it should be 3.1.0 instead.'.format(nengo.__version__)
@@ -30,7 +30,7 @@ NUM_CLASSES = 10
 EPOCHS = 5
 
 # -- Converter parameters -- #
-SWAP_ACTIVATIONS = {tf.nn.relu: nengo.LIF()}
+SWAP_ACTIVATIONS = {tf.nn.relu: nengo.SpikingRectifiedLinear()}
 SCALE_FIRING_RATES = 100
 SYNAPSE = 0.01
 
