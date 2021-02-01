@@ -143,7 +143,7 @@ def main():
     converter = nengo_dl.Converter(new_model,
                                    scale_firing_rates=scale,
                                    synapse=synapse,
-                                   swap_activations={tf.nn.relu: nengo.LIF()})
+                                   swap_activations={tf.nn.relu: nengo.SpikingRectifiedLinear()})
 
     # Input and output objects
     network_input = converter.inputs[input_layer]
