@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 
-"""Loads landcover datasets."""
+"""Loads land cover datasets: UC Merced or EuroSAT."""
 
 # -- Built-in modules -- #
 import pathlib
@@ -9,17 +9,16 @@ import pathlib
 import tensorflow as tf
 import tensorflow_datasets as tfds
 
-
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
-__date__ = '2021-01-28'
+__version__ = '0.1.1'
+__date__ = '2021-02-01'
 
 
 def load_ucm():
-    """Loads the UC Merced dataset."""
+    """Loads the UC Merced dataset (http://weegee.vision.ucmerced.edu/datasets/landuse.html)."""
 
     # Load data
     (ucm_train, ucm_val, ucm_test), info = tfds.load('uc_merced',
@@ -39,7 +38,7 @@ def load_ucm():
 
 
 def load_eurosat():
-    """Loads the EUroSAT RGB dataset."""
+    """Loads the EuroSAT RGB dataset (https://github.com/phelber/EuroSAT)."""
 
     # Load data
     eurosat_path = tf.keras.utils.get_file(fname='eurosat_rgb',
@@ -60,7 +59,10 @@ def load_eurosat():
                                                                   image_size=(64, 64),
                                                                   shuffle=True,
                                                                   seed=123)
+    # Get the labels
     labels = eurosat.class_names
+
+    # Unbatch before splitting into training, validation, and test sets
     eurosat = eurosat.unbatch()
 
     # Split into training, validation, and test sets
@@ -69,4 +71,4 @@ def load_eurosat():
     eurosat_test = eurosat_val.skip(num_val)
     eurosat_val = eurosat_val.take(num_val)
 
-    return eurosat_train, eurosat_val, eurosat_test,labels
+    return eurosat_train, eurosat_val, eurosat_test, labels
