@@ -14,8 +14,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.4'
-__date__ = '2021-01-28'
+__version__ = '0.1.5'
+__date__ = '2021-02-01'
 
 
 # - Image processing and augmentation - #
@@ -47,6 +47,8 @@ def rescale_resize(image, image_size: tuple):
 
 def augment(image,
             image_size: tuple,
+            lower_zoom: float = .999,
+            upper_zoom: float = 1.,
             max_brightness_delta: float = 0.,
             max_hue_delta: float = 0.,
             lower_contrast: float = .999,
@@ -54,7 +56,7 @@ def augment(image,
             lower_saturation: float = .999,
             upper_saturation: float = 1.):
     """
-    Image augmantation function.
+    Image augmentation function.
 
     Parameters
     ----------
@@ -62,6 +64,11 @@ def augment(image,
         3-D Tensor of shape [height, width, 3] and with non-negative integer values.
     image_size : tuple
         Tuple of 2 elements: new_height, new_width. The new size for the images.
+    lower_zoom : float
+        Lower bound for a random zoom factor. Must be positive.
+    upper_zoom : float
+        Upper bound for a random zoom factor. Must be bigger than lower_zoom.
+        Note: Zoom is applied to width and height independently.
     max_brightness_delta : float
         To adjust brightness by a delta randomly picked in the interval [-max_delta, max_delta). Must be non-negative.
     max_hue_delta : float
@@ -78,13 +85,16 @@ def augment(image,
 
     Returns
     -------
-
+    image :
+        3-D Tensor of shape [height, width, 3] and with non-negative integer values.
     """
-    # Rescale
-    image = tf.cast(image, tf.float32) / 255.
 
-    # Resize and random crop
-    image = tf.image.resize_with_crop_or_pad(image, image_size[0] + 6, image_size[1] + 6)
+    # Random zoom
+    zoom = tf.random.uniform((2,), minval=lower_zoom, maxval=upper_zoom)
+    image = tf.image.resize(image, [int(zoom[0] * image_size[0]), int(zoom[1] * image_size[1])])
+
+    # Random crop
+    image = tf.image.resize_with_crop_or_pad(image, int(1.03 * image_size[0]), int(1.03 * image_size[1]))
     image = tf.image.random_crop(image, size=[image_size[0], image_size[1], 3])
 
     # Random flip
@@ -124,7 +134,7 @@ def plot_spikes(path_to_save: str,
                 scale: float = 1.,
                 show=False):
     """
-    Plotes the spike activity, given the input.
+    Plots the spike activity, given the input.
 
     Parameters
     ----------
@@ -212,7 +222,7 @@ def plot_timestep_accuracy(synapses: list,
                            y_logscale: bool = False,
                            show: bool = False):
     """
-    Plots the accuracy agaist the number of time steps, with respect to different levels of synapse and firing rate.
+    Plots the accuracy against the number of time steps, with respect to different levels of synapse and firing rate.
 
     Parameters
     ----------
