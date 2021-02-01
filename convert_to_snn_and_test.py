@@ -26,7 +26,7 @@ import utils
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 __date__ = '2021-02-01'
 
 # - Assertions to ensure modules compatibility - #
@@ -83,7 +83,9 @@ def main():
     input_layer = tf.keras.Input(shape=input_shape)
 
     # - First convolutional layer
-    config = model.layers[1].get_config()
+    # -- If the first layer is an input layer, we skip it
+    n = 0 if isinstance(model.layers[0], tf.keras.layers.Conv2D) else 1
+    config = model.layers[n].get_config()
     filters, kernel_size, name = config['filters'], config['kernel_size'], config['name']
     x = tf.keras.layers.Conv2D(filters=filters,
                                kernel_size=kernel_size,
@@ -92,7 +94,7 @@ def main():
                                name=name)(input_layer)
 
     # - The remaining layers
-    for layer in model.layers[2:]:
+    for layer in model.layers[n+1:]:
         if isinstance(layer, tf.keras.layers.Conv2D):
             config = layer.get_config()
             filters, kernel_size, name = config['filters'], config['kernel_size'], config['name']
