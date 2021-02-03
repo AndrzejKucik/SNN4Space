@@ -20,8 +20,8 @@ from utils import augment, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.2'
-__date__ = '2021-02-01'
+__version__ = '0.2.3'
+__date__ = '2021-02-03'
 
 # - Argument parser - #
 parser = ArgumentParser()
@@ -88,13 +88,13 @@ UPPER_SATURATION = args['upper_saturation']
 if DATASET == 'eurosat':
     INPUT_SHAPE = (64, 64, 3)
     NUM_CLASSES = 10
+    BUFFER_SIZE = 21600
 elif DATASET == 'ucm':
     INPUT_SHAPE = (224, 224, 3)
     NUM_CLASSES = 21
+    BUFFER_SIZE = 1680
 else:
     exit('Invalid dataset!')
-
-BUFFER_SIZE = 1680
 
 # Set the seed for reproducibility
 tf.random.set_seed(seed=SEED)
@@ -199,6 +199,8 @@ def main():
     # Evaluate the model
     loss, acc = model.evaluate(x=x_test)
     print('Best model\'s accuracy: {:.2f}%.'.format(acc * 100))
+
+    os.rename(MODEL_FILEPATH, MODEL_FILEPATH.with_name(MODEL_FILEPATH.stem + '_acc_{:.2f}.h5'.format(acc * 100)))
 
 
 if __name__ == '__main__':
