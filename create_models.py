@@ -9,8 +9,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
-__date__ = '2021-02-01'
+__version__ = '0.1.1'
+__date__ = '2021-02-03'
 
 
 def create_vgg16_model(input_shape: tuple = (224, 224, 3),
@@ -36,37 +36,49 @@ def create_vgg16_model(input_shape: tuple = (224, 224, 3),
 
     Returns
     -------
-    model
+    model :
         tf.keras.Model object.
     """
 
     # Load the VGG16 model (this may take a moment for the first time)
-    vgg16 = tf.keras.applications.VGG16(include_top=False, weights='imagenet', input_shape=input_shape,
-                                        pooling='avg')
+    vgg16 = tf.keras.applications.VGG16(include_top=False, weights='imagenet', input_shape=input_shape, pooling='avg')
 
-    # Create new model
+    # Define a new model
     model = tf.keras.Sequential()
 
-    # Add layers
+    # Loop over VGG16 layers
     for layer in vgg16.layers:
-        # - Add regularization to the convolutional layers
-        if isinstance(layer, tf.keras.layers.Conv2D):
-            if kernel_l2 > 0:
-                setattr(layer, 'kernel_regularizer', tf.keras.regularizers.l2(kernel_l2))
-            if bias_l1 > 0:
-                setattr(layer, 'bias_regularizer', tf.keras.regularizers.l1(bias_l1))
-            model.add(layer)
+        config = layer.get_config()
 
-        # - Swap max for average pooling
-        elif isinstance(layer, tf.keras.layers.MaxPooling2D):
-            model.add(tf.keras.layers.AveragePooling2D((2, 2)))
-            # - Add dropout, if needed
+        if isinstance(layer, tf.keras.layers.Conv2D):
+            # - Add regularizers if needed
+            kernel_regularizer = tf.keras.regularizers.l2(kernel_l2) if kernel_l2 > 0 else None
+            bias_regularizer = tf.keras.regularizers.l1(bias_l1) if bias_l1 > 0 else None
+
+            model.add(tf.keras.layers.Conv2D(filters=config['filters'],
+                                             kernel_size=config['kernel_size'],
+                                             strides=config['strides'],
+                                             padding=config['padding'],
+                                             activation=tf.nn.relu,
+                                             kernel_regularizer=kernel_regularizer,
+                                             bias_regularizer=bias_regularizer,
+                                             name=config['name'],
+                                             input_shape=layer.input.shape[1:]))
+            model.layers[-1].set_weights(layer.get_weights())
+
+        if isinstance(layer, tf.keras.layers.MaxPooling2D):
+            # - Change the max pooling to average pooling
+            model.add(tf.keras.layers.AveragePooling2D(pool_size=config['pool_size'],
+                                                       strides=config['strides'],
+                                                       padding=config['padding']))
+            # -- Add dropout if necessary
             if dropout > 0.:
                 model.add(tf.keras.layers.Dropout(dropout))
-        else:
-            model.add(layer)
 
-    # Final dense layer
+    # - Conclude VGG layers with a global average pooling layer
+    model.add(tf.keras.layers.GlobalAveragePooling2D())
+
+    # - Output layer
     model.add(tf.keras.layers.Dense(num_classes, use_bias=False))
 
     return model
