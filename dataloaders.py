@@ -13,8 +13,8 @@ import tensorflow_datasets as tfds
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.1'
-__date__ = '2021-02-01'
+__version__ = '0.1.2'
+__date__ = '2021-02-03'
 
 
 def load_ucm():
@@ -34,7 +34,7 @@ def load_ucm():
                                                                                                    num_val,
                                                                                                    num_test))
 
-    return ucm_test, ucm_val, ucm_test, info.features['label'].names
+    return ucm_train, ucm_val, ucm_test, info.features['label'].names
 
 
 def load_eurosat():
