@@ -26,8 +26,8 @@ import utils
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.3'
-__date__ = '2021-02-01'
+__version__ = '0.2.4'
+__date__ = '2021-02-03'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.1.0', 'Nengo version is {}, and it should be 3.1.0 instead.'.format(nengo.__version__)
@@ -57,12 +57,11 @@ def main():
     # Load model
     try:
         model = tf.keras.models.load_model(filepath=path_to_model)
-
-    # If there is no valid model, a new one will be created and trained
     except OSError:
         exit('Invalid model path!')
 
     # Paramters
+    # noinspection PyUnboundLocalVariable
     input_shape = model.input.shape[1:]
     num_classes = model.output.shape[-1]
     if input_shape == (64, 64, 3) and num_classes == 10:
@@ -82,35 +81,40 @@ def main():
     # - Input layer
     input_layer = tf.keras.Input(shape=input_shape)
 
-    # - First convolutional layer
-    # -- If the first layer is an input layer, we skip it
+    # - If the first layer in the loaded model is an input layer, we skip it
     n = 0 if isinstance(model.layers[0], tf.keras.layers.Conv2D) else 1
+
+    # - First convolutional layer
     config = model.layers[n].get_config()
-    filters, kernel_size, name = config['filters'], config['kernel_size'], config['name']
-    x = tf.keras.layers.Conv2D(filters=filters,
-                               kernel_size=kernel_size,
-                               padding='same',
+    x = tf.keras.layers.Conv2D(filters=config['filters'],
+                               kernel_size=config['kernel_size'],
+                               strides=config['strides'],
+                               padding=config['padding'],
                                activation=tf.nn.relu,
-                               name=name)(input_layer)
+                               name=config['name'])(input_layer)
 
     # - The remaining layers
-    for layer in model.layers[n+1:]:
+    for layer in model.layers[n + 1:]:
+        config = layer.get_config()
         if isinstance(layer, tf.keras.layers.Conv2D):
-            config = layer.get_config()
-            filters, kernel_size, name = config['filters'], config['kernel_size'], config['name']
-            x = tf.keras.layers.Conv2D(filters=filters,
-                                       kernel_size=kernel_size,
-                                       padding='same',
+            x = tf.keras.layers.Conv2D(filters=config['filters'],
+                                       kernel_size=config['kernel_size'],
+                                       strides=config['strides'],
+                                       padding=config['padding'],
                                        activation=tf.nn.relu,
-                                       name=name)(x)
+                                       name=config['name'])(x)
+
         elif isinstance(layer, tf.keras.layers.AveragePooling2D):
-            x = tf.keras.layers.AveragePooling2D((2, 2))(x)
+            x = tf.keras.layers.AveragePooling2D(pool_size=config['pool_size'],
+                                                 strides=config['strides'],
+                                                 padding=config['padding'])(x)
 
     # - Conclude VGG layers with a global average pooling layer
     global_pool = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     # - Output layer
-    output_layer = tf.keras.layers.Dense(num_classes, use_bias=False,
+    output_layer = tf.keras.layers.Dense(units=num_classes,
+                                         use_bias=False,
                                          name=model.layers[-1].get_config()['name'])(global_pool)
 
     # - Define the  new model
@@ -122,11 +126,10 @@ def main():
             weights = model.get_layer(name=layer.name).get_weights()
             layer.set_weights(weights)
 
-    # Show model's summary
+    # - Show model's summary
     model.summary()
 
     # Load data
-    # noinspection PyUnboundLocalVariable
     if dataset == 'eurosat':
         _, _, x_test, labels = load_eurosat()
         num_test = 2700
