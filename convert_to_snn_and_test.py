@@ -18,9 +18,9 @@ import nengo_dl
 import numpy as np
 import tensorflow as tf
 
-# -- Proprietary modules -- '
+# -- Proprietary modules -- #
 from dataloaders import load_eurosat, load_ucm
-import utils
+from utils import rescale_resize_image, plot_spikes, prewitt, prewitt_mask, sobel, sobel_mask, INPUT_FILTER
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
@@ -43,13 +43,15 @@ def main():
     """The main function."""
     # - Argument parser - #
     parser = ArgumentParser()
-    parser.add_argument('-md', '--model_path', type=str, default='', required=True, help='Path to the model.')
+    parser.add_argument('-md', '--model_path', type=str, required=True, help='Path to the model.')
+    parser.add_argument('-if', '--input_filter', type=str, default='', help='Type of the input filter (if any).')
     parser.add_argument('-sc', '--firing_rate_scale', type=float, default=1, help='scale factor for the firing rate.')
     parser.add_argument('-syn', '--synapse', type=float, default=None, help='Value of the synapse.')
     parser.add_argument('-t', '--timesteps', type=int, default=1, help='Simulation timesteps.')
 
     args = vars(parser.parse_args())
     path_to_model = Path(args['model_path'])
+    input_filter = args['input_filter']
     scale = args['firing_rate_scale']
     synapse = args['synapse']
     timesteps = args['timesteps']
@@ -69,13 +71,13 @@ def main():
     elif input_shape == (224, 224, 3) and num_classes == 21:
         dataset = 'ucm'
     else:
-        exit("Invalid model!")
+        exit('Invalid model!')
 
     # Preprocessing function
-    def preprocess(image, label):
+    def rescale_resize(image, label):
         """Rescales and resizes the input images."""
 
-        return utils.rescale_resize(image, input_shape[:-1]), label
+        return rescale_resize_image(image, input_shape[:-1]), label
 
     # Nengo does not like regularization and dropout so we have to create a new model without them
     # - Input layer
@@ -127,7 +129,7 @@ def main():
             layer.set_weights(weights)
 
     # - Show model's summary
-    model.summary()
+    new_model.summary()
 
     # Load data
     if dataset == 'eurosat':
@@ -137,11 +139,19 @@ def main():
         _, _, x_test, labels = load_ucm()
         num_test = 210
 
-    # Apply preprocessing function
-    x_test = x_test.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    # Add the input filter name to the dataset
+    if input_filter != '':
+        dataset += '_' + input_filter
+
+    # Apply preprocessing function and batch
+    x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(num_test)
+
+    # Apply input filter
+    if INPUT_FILTER[input_filter] is not None:
+        x_test = x_test.map(INPUT_FILTER[input_filter], num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Evaluate the model
-    loss, acc = model.evaluate(x=x_test.batch(num_test))
+    loss, acc = new_model.evaluate(x=x_test)
     print('Model accuracy: {:.2f}%.'.format(acc * 100))
 
     # Convert to a Nengo network
@@ -161,9 +171,9 @@ def main():
         nengo_dl.configure_settings(stateful=False)
 
     # Convert the test data from tf.dataset to numpy arrays
-    test_data = [(n[0].numpy(), n[1].numpy()) for n in x_test.take(num_test)]
-    x_test = np.array([n[0] for n in test_data])
-    y_test = np.array([n[1] for n in test_data])
+    test_data = [(n[0].numpy(), n[1].numpy()) for n in x_test.take(1)]
+    x_test = np.array([n[0] for n in test_data])[0]
+    y_test = np.array([n[1] for n in test_data])[0]
 
     # Tile images according to the number of timesteps
     tiled_test_images = np.tile(np.reshape(x_test, (x_test.shape[0], 1, -1)), (1, timesteps, 1))
@@ -191,17 +201,17 @@ def main():
     os.makedirs(path_to_figures, exist_ok=True)
 
     for i in range(0, N_EXAMPLES, 2):
-        utils.plot_spikes(path_to_save=path_to_figures.joinpath('acc_{}_{}.png'.format(accuracy, i // 2)),
-                          examples=((255 * x_test).astype('uint8'), y_test),
-                          start=i,
-                          stop=i + 2,
-                          labels=labels,
-                          simulator=sim,
-                          data=data,
-                          probe=probe,
-                          network_output=network_output,
-                          n_steps=timesteps,
-                          scale=scale)
+        plot_spikes(path_to_save=path_to_figures.joinpath('acc_{}_{}.png'.format(accuracy, i // 2)),
+                    examples=((255 * x_test).astype('uint8'), y_test),
+                    start=i,
+                    stop=i + 2,
+                    labels=labels,
+                    simulator=sim,
+                    data=data,
+                    probe=probe,
+                    network_output=network_output,
+                    n_steps=timesteps,
+                    scale=scale)
 
 
 if __name__ == '__main__':
