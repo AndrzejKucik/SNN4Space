@@ -14,24 +14,27 @@ import tensorflow as tf
 # -- Proprietary modules -- #
 from create_models import create_vgg16_model
 from dataloaders import load_ucm, load_eurosat
-from utils import augment, rescale_resize
+from utils import augment_image, rescale_resize_image, INPUT_FILTER_DICT
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.3'
-__date__ = '2021-02-03'
+__version__ = '0.3.0'
+__date__ = '2021-02-05'
 
 # - Argument parser - #
 parser = ArgumentParser()
 # -- Dataset
-parser.add_argument('-ds', '--dataset', type=str, default='ucm', help='Dataset; either `ucm` or `eurosat`.')
+parser.add_argument('-ds', '--dataset', type=str, default='ucm',
+                    help='Dataset. One of: '
+                         + '`eurosat`, `eurosat_prewitt`, `eurosat_prewitt_mask`, `eurosat_sobel`, `eurosat_sobel_mask`'
+                         + '`ucm`, `ucm_prewitt`, `ucm_prewitt_mask`, `ucm_sobel`, `ucm_sobel_mask`')
 # -- Seed
 parser.add_argument('-s', '--seed', type=int, default=5, help='Global random seed.')
 # -- Training parameters
 parser.add_argument('-e', '--epochs', type=int, default=1000, help='Number of training epochs.')
-parser.add_argument('-bs', '--batch_size', type=int, default=105, help='Batch size (per replica).')
+parser.add_argument('-bs', '--batch_size', type=int, default=32, help='Batch size (per replica).')
 parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help='Learning rate.')
 # -- Model parameters
 parser.add_argument('-drpt', '--dropout', type=float, default=0, help='Dropout factor. Must be in [0, 1)')
@@ -85,11 +88,11 @@ LOWER_SATURATION = args['lower_saturation']
 UPPER_SATURATION = args['upper_saturation']
 
 # Fix the dataset parameters
-if DATASET == 'eurosat':
+if 'eurosat' in DATASET:
     INPUT_SHAPE = (64, 64, 3)
     NUM_CLASSES = 10
     BUFFER_SIZE = 21600
-elif DATASET == 'ucm':
+elif 'ucm' in DATASET:
     INPUT_SHAPE = (224, 224, 3)
     NUM_CLASSES = 21
     BUFFER_SIZE = 1680
@@ -119,25 +122,25 @@ MODEL_FILEPATH = MODEL_FILEPATH.joinpath('s_{}_e_{}_bs_{}_lr_{}'.format(SEED, EP
 
 
 # Preprocessing functions
-def preprocess(image, label):
+def rescale_resize(image, label):
     """Rescales and resizes the input images."""
 
-    return rescale_resize(image, INPUT_SHAPE[:-1]), label
+    return rescale_resize_image(image, INPUT_SHAPE[:-1]), label
 
 
-def random_preprocess(image, label):
+def augment(image, label):
     """Randomly augments the input images."""
 
-    image = augment(image=image,
-                    image_size=INPUT_SHAPE[:-1],
-                    lower_zoom=LOWER_ZOOM,
-                    upper_zoom=UPPER_ZOOM,
-                    max_brightness_delta=MAX_BRIGHTNESS_DELTA,
-                    max_hue_delta=MAX_HUE_DELTA,
-                    lower_contrast=LOWER_CONTRAST,
-                    upper_contrast=UPPER_CONTRAST,
-                    lower_saturation=LOWER_SATURATION,
-                    upper_saturation=UPPER_SATURATION)
+    image = augment_image(image=image,
+                          image_size=INPUT_SHAPE[:-1],
+                          lower_zoom=LOWER_ZOOM,
+                          upper_zoom=UPPER_ZOOM,
+                          max_brightness_delta=MAX_BRIGHTNESS_DELTA,
+                          max_hue_delta=MAX_HUE_DELTA,
+                          lower_contrast=LOWER_CONTRAST,
+                          upper_contrast=UPPER_CONTRAST,
+                          lower_saturation=LOWER_SATURATION,
+                          upper_saturation=UPPER_SATURATION)
 
     return image, label
 
@@ -147,24 +150,36 @@ def main():
     """The main function."""
 
     # Load data
-    if DATASET == 'eurosat':
+    if 'eurosat' in DATASET:
         x_train, x_val, x_test, _ = load_eurosat()
-    else:  # DATASET == 'ucm'
+    else:  # 'ucm' in DATASET
         x_train, x_val, x_test, _ = load_ucm()
 
     # Apply preprocessing functions (no augmentation for the validation and test sets) after caching to avoid caching
     # randomness
-    x_train = x_train.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
-    x_val = x_val.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
-    x_test = x_test.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_train = x_train.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
+    x_val = x_val.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
+    x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Apply random transforms after caching
-    x_train = x_train.shuffle(BUFFER_SIZE).map(random_preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_train = x_train.shuffle(BUFFER_SIZE).map(augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    # Prefetch the data and apply random transformations
-    x_train = x_train.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
-    x_val = x_val.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
-    x_test = x_test.batch(BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
+    # Batch data
+    x_train = x_train.batch(BATCH_SIZE)
+    x_val = x_val.batch(BATCH_SIZE)
+    x_test = x_test.batch(BATCH_SIZE)
+
+    # Optional gradient-based input (Prewitt and Sobel filters must be applied after batching)
+    for key, value in INPUT_FILTER_DICT.items():
+        if key in DATASET:
+            x_train = x_train.map(value, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            x_val = x_val.map(value, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+            x_test = x_test.map(value, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    # Prefetch data
+    x_train = x_train.prefetch(tf.data.experimental.AUTOTUNE)
+    x_val = x_val.prefetch(tf.data.experimental.AUTOTUNE)
+    x_test = x_test.prefetch(tf.data.experimental.AUTOTUNE)
 
     # Compile the model
     with STRATEGY.scope():
@@ -200,6 +215,7 @@ def main():
     loss, acc = model.evaluate(x=x_test)
     print('Best model\'s accuracy: {:.2f}%.'.format(acc * 100))
 
+    # Rename the best model file to include the accuracy in its name
     os.rename(MODEL_FILEPATH, MODEL_FILEPATH.with_name(MODEL_FILEPATH.stem + '_acc_{:.2f}.h5'.format(acc * 100)))
 
 
