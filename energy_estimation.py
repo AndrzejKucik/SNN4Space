@@ -11,13 +11,13 @@ import tensorflow as tf
 
 # -- Proprietary modules -- #
 from dataloaders import load_eurosat, load_ucm
-import utils
+from utils import rescale_resize_image, INPUT_FILTER_DICT
 
 # -- File info -- #
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 __date__ = '2021-02-05'
 
 
@@ -209,6 +209,7 @@ def main():
     parser.add_argument('-md', '--model_path', type=str, default='', required=True, help='Path to the model.')
     parser.add_argument('-ea', '--energy_addition', type=float, default=.1,
                         help='Energy (in pJ) required for performing a single addition operation.')
+    parser.add_argument('-if', '--input_filter', type=str, default='', help='Type of the input filter (if any).')
     parser.add_argument('-em', '--energy_multiplication', type=float, default=3.1,
                         help='Energy (in pJ) required for performing a single multiplication operation.')
     parser.add_argument('-t', '--timesteps', type=int, default=1,
@@ -216,6 +217,7 @@ def main():
 
     args = vars(parser.parse_args())
     path_to_model = args['model_path']
+    input_filter = args['input_filter'].lower()
     energy_addition = args['energy_addition']
     energy_multiplication = args['energy_multiplication']
     timesteps = args['timesteps']
@@ -281,10 +283,12 @@ def main():
     def rescale_resize(image, label):
         """Rescales and resizes the input images."""
 
-        return utils.rescale_resize_image(image, input_shape[:-1]), label
+        return rescale_resize_image(image, input_shape[:-1]), label
 
     # noinspection PyUnboundLocalVariable
     x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(batch_size=num_test)
+    if input_filter in INPUT_FILTER_DICT.keys():
+        x_test = x_test.map(INPUT_FILTER_DICT[input_filter], num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Calculate the number of spikes and average over the batch
     num_spikes = spikes_model.predict(x_test)
