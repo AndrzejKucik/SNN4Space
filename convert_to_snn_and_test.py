@@ -51,7 +51,7 @@ def main():
 
     args = vars(parser.parse_args())
     path_to_model = Path(args['model_path'])
-    input_filter = args['input_filter']
+    input_filter = args['input_filter'].lower()
     scale = args['firing_rate_scale']
     synapse = args['synapse']
     timesteps = args['timesteps']
@@ -147,7 +147,7 @@ def main():
     x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(num_test)
 
     # Apply input filter
-    if INPUT_FILTER[input_filter] is not None:
+    if input_filter in INPUT_FILTER.keys():
         x_test = x_test.map(INPUT_FILTER[input_filter], num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Evaluate the model
