@@ -9,17 +9,18 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import tensorflow_io as tfio
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.5'
-__date__ = '2021-02-01'
+__version__ = '0.1.6'
+__date__ = '2021-02-05'
 
 
-# - Image processing and augmentation - #
-def rescale_resize(image, image_size: tuple):
+# - Image preprocessing and augmentation - #
+def rescale_resize_image(image, image_size: tuple):
     """
     Converts an integer image tensor to a float,scales it down it to [0, 1], and resizes to a desired size.
 
@@ -45,16 +46,16 @@ def rescale_resize(image, image_size: tuple):
     return image
 
 
-def augment(image,
-            image_size: tuple,
-            lower_zoom: float = .999,
-            upper_zoom: float = 1.,
-            max_brightness_delta: float = 0.,
-            max_hue_delta: float = 0.,
-            lower_contrast: float = .999,
-            upper_contrast: float = 1.,
-            lower_saturation: float = .999,
-            upper_saturation: float = 1.):
+def augment_image(image,
+                  image_size: tuple,
+                  lower_zoom: float = .999,
+                  upper_zoom: float = 1.,
+                  max_brightness_delta: float = 0.,
+                  max_hue_delta: float = 0.,
+                  lower_contrast: float = .999,
+                  upper_contrast: float = 1.,
+                  lower_saturation: float = .999,
+                  upper_saturation: float = 1.):
     """
     Image augmentation function.
 
@@ -121,6 +122,53 @@ def augment(image,
     return image
 
 
+# - Input filters - #
+def prewitt(images, labels):
+    """Applies Prewitt filter to a batch of images and passes on the labels."""
+    images = tfio.experimental.filter.prewitt(images)
+
+    # Normalize
+    images /= tf.sqrt(10.)
+
+    # Ignore small values
+    images = images * tf.cast(images >= 1 / 255., tf.float32)
+
+    return images, labels
+
+
+def prewitt_mask(images, labels):
+    """Applies boolean Prewitt filter mask to a batch of images and passes on the labels."""
+    _images, labels = prewitt(images, labels)
+    images = images * tf.cast(_images > 0., tf.float32)
+
+    return images, labels
+
+
+def sobel(images, labels):
+    """Applies Sobel filter to a batch of images and passes on the labels."""
+    images = tfio.experimental.filter.sobel(images)
+
+    # Normalize
+    images /= tf.sqrt(20.)
+
+    # Ignore small values
+    images = images * tf.cast(images >= 1 / 255., tf.float32)
+
+    return images, labels
+
+
+def sobel_mask(images, labels):
+    """Applies boolean Sobel filter mask to a batch of images and passes on the labels."""
+    _images, labels = sobel(images, labels)
+    images = images * tf.cast(_images > 0., tf.float32)
+
+    return images, labels
+
+
+INPUT_FILTER_DICT = {'prewitt': prewitt, 'prewitt_mask': prewitt_mask, 'sobel': sobel, 'sobel_mask': sobel_mask}
+
+
+# - Spikes visualization - #
 def plot_spikes(path_to_save: str,
                 examples: tuple,
                 start: int,
@@ -214,6 +262,7 @@ def plot_spikes(path_to_save: str,
     plt.close(fig=fig)
 
 
+# - Accuracy visualization - #
 def plot_timestep_accuracy(synapses: list,
                            scales: list,
                            timesteps: list,
@@ -306,3 +355,29 @@ def plot_timestep_accuracy(synapses: list,
 
     # And close it
     plt.close(fig=fig)
+
+
+# - Data visualization - #
+def visualize_data(data, class_names: list):
+    """
+    Visualizes input data images.
+    Parameters
+    ----------
+    data :
+        tf.dataset object with images and labels batched.
+    class_names : list
+        List of strings corresponding to class names of the dataset.
+    """
+
+    # Make figure
+    plt.figure(figsize=(10, 10))
+
+    for images, labels in data.take(1):
+        for i in range(9):
+            plt.subplot(3, 3, i + 1)
+            plt.imshow(images[i].numpy())
+            plt.title(class_names[labels[i].numpy()])
+            plt.axis('off')
+
+    # Display
+    plt.show()
