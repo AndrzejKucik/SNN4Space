@@ -17,8 +17,8 @@ import utils
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
-__date__ = '2021-02-03'
+__version__ = '0.1.1'
+__date__ = '2021-02-05'
 
 
 def number_of_layer_ops(layer, include_bias: bool = False):
@@ -278,13 +278,13 @@ def main():
         exit("Invalid model!")
 
     # Preprocessing function
-    def preprocess(image, label):
+    def rescale_resize(image, label):
         """Rescales and resizes the input images."""
 
-        return utils.rescale_resize(image, input_shape[:-1]), label
+        return utils.rescale_resize_image(image, input_shape[:-1]), label
 
     # noinspection PyUnboundLocalVariable
-    x_test = x_test.map(preprocess, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(batch_size=num_test)
+    x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(batch_size=num_test)
 
     # Calculate the number of spikes and average over the batch
     num_spikes = spikes_model.predict(x_test)
