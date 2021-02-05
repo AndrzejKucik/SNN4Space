@@ -20,7 +20,7 @@ import tensorflow as tf
 
 # -- Proprietary modules -- #
 from dataloaders import load_eurosat, load_ucm
-from utils import rescale_resize_image, plot_spikes, prewitt, prewitt_mask, sobel, sobel_mask, INPUT_FILTER
+from utils import rescale_resize_image, plot_spikes, INPUT_FILTER_DICT
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
@@ -147,8 +147,8 @@ def main():
     x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(num_test)
 
     # Apply input filter
-    if input_filter in INPUT_FILTER.keys():
-        x_test = x_test.map(INPUT_FILTER[input_filter], num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    if input_filter in INPUT_FILTER_DICT.keys():
+        x_test = x_test.map(INPUT_FILTER_DICT[input_filter], num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Evaluate the model
     loss, acc = new_model.evaluate(x=x_test)
