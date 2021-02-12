@@ -15,8 +15,8 @@ import tensorflow_io as tfio
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.6'
-__date__ = '2021-02-05'
+__version__ = '0.1.7'
+__date__ = '2021-02-12'
 
 
 # - Image preprocessing and augmentation - #
@@ -44,6 +44,18 @@ def rescale_resize_image(image, image_size: tuple):
     image = tf.image.resize(image, image_size)
 
     return image
+
+
+def rescale_resize(image_size):
+    """
+    Returns a function resizing an image to the desired size, and passing on the label.
+    Parameters
+    ----------
+    image_size : tuple
+        Image height and width.
+    """
+
+    return lambda image, label: (rescale_resize_image(image, image_size), label)
 
 
 def augment_image(image,
@@ -123,49 +135,43 @@ def augment_image(image,
 
 
 # - Input filters - #
-def prewitt(images, labels):
-    """Applies Prewitt filter to a batch of images and passes on the labels."""
-    images = tfio.experimental.filter.prewitt(images)
+def input_filter_map(filter_name: str):
+    """
+    Function returning a function applying a filter to the input images and passing on the label.
+    Parameters
+    ----------
+    filter_name : str
+        Name of an input filter, works with `prewitt`, `sobel`, `mask`, and `sq`.
+    Returns
+    -------
+    image_filter : lambda
+        Function taking a tensor tuple (images, label) as the input. Images are assumed to be batched.
+    """
 
-    # Normalize
-    images /= tf.sqrt(10.)
+    def image_filter(images, label):
+        if 'prewitt' in filter_name.lower():
+            # Apply Prewitt filter and normalize
+            new_images = tfio.experimental.filter.prewitt(images) / tf.sqrt(10.)
+        elif 'sobel' in filter_name.lower():
+            # Apply Sobel filter and normalize
+            new_images = tfio.experimental.filter.sobel(images) / tf.sqrt(20.)
+        else:
+            new_images = images
 
-    # Ignore small values
-    images = images * tf.cast(images >= 1 / 255., tf.float32)
+        if 'sq' in filter_name.lower():
+            # Square the input:
+            new_images = new_images ** 2
 
-    return images, labels
+        # Ignore small values
+        new_images = new_images * tf.cast(new_images >= 1 / 255., tf.float32)
 
+        # Apply filter mas to the original images
+        if 'mask' in filter_name.lower():
+            new_images = images * tf.cast(new_images > 0., tf.float32)
 
-def prewitt_mask(images, labels):
-    """Applies boolean Prewitt filter mask to a batch of images and passes on the labels."""
-    _images, labels = prewitt(images, labels)
-    images = images * tf.cast(_images > 0., tf.float32)
+        return new_images, label
 
-    return images, labels
-
-
-def sobel(images, labels):
-    """Applies Sobel filter to a batch of images and passes on the labels."""
-    images = tfio.experimental.filter.sobel(images)
-
-    # Normalize
-    images /= tf.sqrt(20.)
-
-    # Ignore small values
-    images = images * tf.cast(images >= 1 / 255., tf.float32)
-
-    return images, labels
-
-
-def sobel_mask(images, labels):
-    """Applies boolean Sobel filter mask to a batch of images and passes on the labels."""
-    _images, labels = sobel(images, labels)
-    images = images * tf.cast(_images > 0., tf.float32)
-
-    return images, labels
-
-
-INPUT_FILTER_DICT = {'prewitt': prewitt, 'prewitt_mask': prewitt_mask, 'sobel': sobel, 'sobel_mask': sobel_mask}
+    return image_filter
 
 
 # - Spikes visualization - #

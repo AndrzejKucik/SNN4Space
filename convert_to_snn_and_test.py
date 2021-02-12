@@ -20,14 +20,14 @@ import tensorflow as tf
 
 # -- Proprietary modules -- #
 from dataloaders import load_eurosat, load_ucm
-from utils import rescale_resize_image, plot_spikes, INPUT_FILTER_DICT
+from utils import input_filter_map, plot_spikes, rescale_resize
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.4'
-__date__ = '2021-02-03'
+__version__ = '0.2.5'
+__date__ = '2021-02-12'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.1.0', 'Nengo version is {}, and it should be 3.1.0 instead.'.format(nengo.__version__)
@@ -37,24 +37,25 @@ assert nengo_dl.__version__ == '3.4.0', 'NengoDL version is {}, and it should be
 N_NEURONS = 1000
 N_EXAMPLES = 10
 
+# - Argument parser - #
+parser = ArgumentParser()
+parser.add_argument('-md', '--model_path', type=str, required=True, help='Path to the model.')
+parser.add_argument('-if', '--input_filter', type=str, default='', help='Type of the input filter (if any).')
+parser.add_argument('-sc', '--firing_rate_scale', type=float, default=1, help='scale factor for the firing rate.')
+parser.add_argument('-syn', '--synapse', type=float, default=None, help='Value of the synapse.')
+parser.add_argument('-t', '--timesteps', type=int, default=1, help='Simulation timesteps.')
+
+args = vars(parser.parse_args())
+path_to_model = Path(args['model_path'])
+input_filter = args['input_filter'].lower()
+scale = args['firing_rate_scale']
+synapse = args['synapse']
+timesteps = args['timesteps']
+
 
 # noinspection PyUnboundLocalVariable
 def main():
     """The main function."""
-    # - Argument parser - #
-    parser = ArgumentParser()
-    parser.add_argument('-md', '--model_path', type=str, required=True, help='Path to the model.')
-    parser.add_argument('-if', '--input_filter', type=str, default='', help='Type of the input filter (if any).')
-    parser.add_argument('-sc', '--firing_rate_scale', type=float, default=1, help='scale factor for the firing rate.')
-    parser.add_argument('-syn', '--synapse', type=float, default=None, help='Value of the synapse.')
-    parser.add_argument('-t', '--timesteps', type=int, default=1, help='Simulation timesteps.')
-
-    args = vars(parser.parse_args())
-    path_to_model = Path(args['model_path'])
-    input_filter = args['input_filter'].lower()
-    scale = args['firing_rate_scale']
-    synapse = args['synapse']
-    timesteps = args['timesteps']
 
     # Load model
     try:
@@ -72,12 +73,6 @@ def main():
         dataset = 'ucm'
     else:
         exit('Invalid model!')
-
-    # Preprocessing function
-    def rescale_resize(image, label):
-        """Rescales and resizes the input images."""
-
-        return rescale_resize_image(image, input_shape[:-1]), label
 
     # Nengo does not like regularization and dropout so we have to create a new model without them
     # - Input layer
@@ -128,6 +123,10 @@ def main():
             weights = model.get_layer(name=layer.name).get_weights()
             layer.set_weights(weights)
 
+    # - Compile the new model
+    new_model.compile(loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
+                      metrics=tf.metrics.SparseCategoricalAccuracy())
+
     # - Show model's summary
     new_model.summary()
 
@@ -144,11 +143,11 @@ def main():
         dataset += '_' + input_filter
 
     # Apply preprocessing function and batch
-    x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(num_test)
+    x_test = x_test.map(rescale_resize(image_size=input_shape[:-1]),
+                        num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(num_test)
 
-    # Apply input filter
-    if input_filter in INPUT_FILTER_DICT.keys():
-        x_test = x_test.map(INPUT_FILTER_DICT[input_filter], num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    # Apply input filter (x_test must be batched!)
+    x_test = x_test.map(input_filter_map(filter_name=input_filter), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Evaluate the model
     loss, acc = new_model.evaluate(x=x_test)

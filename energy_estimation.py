@@ -11,14 +11,34 @@ import tensorflow as tf
 
 # -- Proprietary modules -- #
 from dataloaders import load_eurosat, load_ucm
-from utils import rescale_resize_image, INPUT_FILTER_DICT
+from utils import input_filter_map, rescale_resize
 
 # -- File info -- #
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.2'
-__date__ = '2021-02-05'
+__version__ = '0.1.3'
+__date__ = '2021-02-12'
+
+# - Argument parser - #
+parser = ArgumentParser()
+parser.add_argument('-md', '--model_path', type=str, default='', required=True, help='Path to the model.')
+parser.add_argument('-ea', '--energy_addition', type=float, default=.1,
+                    help='Energy (in pJ) required for performing a single addition operation.')
+parser.add_argument('-if', '--input_filter', type=str, default='', help='Type of the input filter (if any).')
+parser.add_argument('-em', '--energy_multiplication', type=float, default=3.1,
+                    help='Energy (in pJ) required for performing a single multiplication operation.')
+parser.add_argument('-sc', '--firing_rate_scale', type=float, default=1., help='scale factor for the firing rate.')
+parser.add_argument('-t', '--timesteps', type=int, default=1,
+                    help='Number of timesteps for the spiking model simulation.')
+
+args = vars(parser.parse_args())
+path_to_model = args['model_path']
+input_filter = args['input_filter'].lower()
+energy_addition = args['energy_addition']
+energy_multiplication = args['energy_multiplication']
+scale = args['firing_rate_scale']
+timesteps = args['timesteps']
 
 
 def number_of_layer_ops(layer, include_bias: bool = False):
@@ -202,56 +222,40 @@ def number_of_spikes_model(model, t: int = 1):
 
 
 # noinspection PyUnboundLocalVariable
+def energy_consumption(num_ops: int = 0, op_type: str = 'add'):
+    """
+    Function calculating the energy consumption (in Joules) for a given number of operations.
+
+    Parameters
+    ----------
+    num_ops : int
+        Number of operations.
+    op_type : str
+        Type of the operation. Must contain `add` for addition, or `mul` for multiplication, or `mac` for MAC.
+
+    Returns
+    -------
+        energy : float
+    """
+
+    if 'add' in op_type.lower():
+        p_j = energy_addition
+    elif 'mul' in op_type.lower():
+        p_j = energy_multiplication
+    elif 'mac' in op_type.lower():
+        p_j = energy_addition + energy_multiplication
+    else:
+        exit('Operation type not understood!')
+
+    # Convert to pico Joules to Joules
+    energy = 1e-12 * p_j * num_ops
+
+    return energy
+
+
+# noinspection PyUnboundLocalVariable
 def main():
     """The main function."""
-    # - Argument parser - #
-    parser = ArgumentParser()
-    parser.add_argument('-md', '--model_path', type=str, default='', required=True, help='Path to the model.')
-    parser.add_argument('-ea', '--energy_addition', type=float, default=.1,
-                        help='Energy (in pJ) required for performing a single addition operation.')
-    parser.add_argument('-if', '--input_filter', type=str, default='', help='Type of the input filter (if any).')
-    parser.add_argument('-em', '--energy_multiplication', type=float, default=3.1,
-                        help='Energy (in pJ) required for performing a single multiplication operation.')
-    parser.add_argument('-t', '--timesteps', type=int, default=1,
-                        help='Number of timesteps for the spiking model simulation.')
-
-    args = vars(parser.parse_args())
-    path_to_model = args['model_path']
-    input_filter = args['input_filter'].lower()
-    energy_addition = args['energy_addition']
-    energy_multiplication = args['energy_multiplication']
-    timesteps = args['timesteps']
-
-    # noinspection PyUnboundLocalVariable
-    def energy_consumption(num_ops: int = 0, op_type: str = 'add'):
-        """
-        Function calculating the energy consumption (in Joules) for a given number of operations.
-
-        Parameters
-        ----------
-        num_ops : int
-            Number of operations.
-        op_type : str
-            Type of the operation. Must contain `add` for addition, or `mul` for multiplication, or `mac` for MAC.
-
-        Returns
-        -------
-            energy : float
-        """
-
-        if 'add' in op_type.lower():
-            p_j = energy_addition
-        elif 'mul' in op_type.lower():
-            p_j = energy_multiplication
-        elif 'mac' in op_type.lower():
-            p_j = energy_addition + energy_multiplication
-        else:
-            exit('Operation type not understood!')
-
-        # Convert to pico Joules to Joules
-        energy = 1e-12 * p_j * num_ops
-
-        return energy
 
     # Load model
     try:
@@ -279,16 +283,15 @@ def main():
     else:
         exit("Invalid model!")
 
-    # Preprocessing function
-    def rescale_resize(image, label):
-        """Rescales and resizes the input images."""
-
-        return rescale_resize_image(image, input_shape[:-1]), label
-
     # noinspection PyUnboundLocalVariable
-    x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(batch_size=num_test)
-    if input_filter in INPUT_FILTER_DICT.keys():
-        x_test = x_test.map(INPUT_FILTER_DICT[input_filter], num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_test = x_test.map(rescale_resize(image_size=input_shape[:-1]),
+                        num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(batch_size=num_test)
+
+    # Apply the input filter
+    x_test = x_test.map(input_filter_map(filter_name=input_filter), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+    # Scale the firing rate
+    x_test = x_test.map(lambda x, y: (scale*x, y), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Calculate the number of spikes and average over the batch
     num_spikes = spikes_model.predict(x_test)
