@@ -116,8 +116,11 @@ python train_models.py [-ds dataset] [-s seed] [-e epochs] [-bs batch_size] [-dr
 
 where the optional arguments are:
 
-* `dataset` - chosen dataset; one of `eurosat`, `eurosat_prewitt`, `eurosat_prewitt_mask`, `eurosat_sobel`,
-  `eurosat_sobel_mask`, `ucm`, `ucm_prewitt`, `ucm_prewitt_mask`, `ucm_sobel`, `ucm_sobel_mask`.
+* `dataset` - chosen dataset; either `eurosat`, or `ucm`; one can also add either `prewitt` or `sobel`, then the
+  (normalised) Prewitt or Sobel transforms are applied to the input images, and also, optionally `mask`, then the
+  original images with those pixels, for which the Prewitt or Sobel transform are zero, masked out are used as the
+  input; if `sq` is added, then the transforms are squared (or, equivalently, the square root in the Prewitt or Sobel
+  transforms is not applied); so for example it can be `eurosat_prewitt_sq_mask` ot `ucm_sobel` etc.
 * `seed` - global random seed,
 * `epochs` - number of training epochs,
 * `batch_size` - training batch size (per a replica),
@@ -169,7 +172,7 @@ python convert_to_snn_and_test.py -md model_path [-sc firing_rate_scale] [-if in
 where
 
 * `model_path` is the path of a valid `.h5` model which we obtain after running `train_models.py`,
-* `input_filter` is the optional filter for the input data; one of `prewitt`, `prewitt_mask`, `sobel`, `sobel_mask`,
+* `input_filter` is the optional filter for the input data; may contain one of `mask`, `prewitt`, `sobel`, `sq`,
 * `firing_rate_scale` is the scaling factor for the firing rate (float),
 * `synapse` is the neurons' synapse value (float),
 * `timesteps` is the number of timesteps of the simulation (int).
@@ -213,7 +216,7 @@ where
 * `model_path` is the path of a valid `.h5` model which we obtain after running `train_models.py`,
 * `energy_addition` is the average energy required in order to perform a single addition (float),
 * `energy_multiplication` is the average energy required in order to perform a single multiplication (float).
-* `input_filter` is the optional filter for the input data; one of `prewitt`, `prewitt_mask`, `sobel`, `sobel_mask`,
+* `input_filter` is the optional filter for the input data; may contain one of `mask`, `prewitt`, `sobel`, `sq`,
 * `timesteps` is the number of timesteps of the simulation (int).
 
 The energy consumption of the SNN is an approximate upper bound on the true consumption, which assumes that all the
