@@ -14,22 +14,20 @@ import tensorflow as tf
 # -- Proprietary modules -- #
 from create_models import create_vgg16_model
 from dataloaders import load_ucm, load_eurosat
-from utils import augment_image, rescale_resize_image, INPUT_FILTER_DICT
+from utils import augment_image, input_filter_map, rescale_resize
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.0'
-__date__ = '2021-02-05'
+__version__ = '0.3.1'
+__date__ = '2021-02-21'
 
 # - Argument parser - #
 parser = ArgumentParser()
 # -- Dataset
 parser.add_argument('-ds', '--dataset', type=str, default='ucm',
-                    help='Dataset. One of: '
-                         + '`eurosat`, `eurosat_prewitt`, `eurosat_prewitt_mask`, `eurosat_sobel`, `eurosat_sobel_mask`'
-                         + '`ucm`, `ucm_prewitt`, `ucm_prewitt_mask`, `ucm_sobel`, `ucm_sobel_mask`')
+                    help='Dataset. Either `eurosat` or `ucm`. One can also add `prewitt`, `sobel`, `mask` or `sq`.')
 # -- Seed
 parser.add_argument('-s', '--seed', type=int, default=5, help='Global random seed.')
 # -- Training parameters
@@ -121,13 +119,6 @@ MODEL_FILEPATH = MODEL_FILEPATH.joinpath('s_{}_e_{}_bs_{}_lr_{}'.format(SEED, EP
                                          + '_ls_{}_us_{}.h5'.format(LOWER_SATURATION, UPPER_SATURATION))
 
 
-# Preprocessing functions
-def rescale_resize(image, label):
-    """Rescales and resizes the input images."""
-
-    return rescale_resize_image(image, INPUT_SHAPE[:-1]), label
-
-
 def augment(image, label):
     """Randomly augments the input images."""
 
@@ -157,9 +148,11 @@ def main():
 
     # Apply preprocessing functions (no augmentation for the validation and test sets) after caching to avoid caching
     # randomness
-    x_train = x_train.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
-    x_val = x_val.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
-    x_test = x_test.map(rescale_resize, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_train = x_train.map(rescale_resize(image_size=INPUT_SHAPE[:-1]),
+                          num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
+    x_val = x_val.map(rescale_resize(image_size=INPUT_SHAPE[:-1]),
+                      num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
+    x_test = x_test.map(rescale_resize(image_size=INPUT_SHAPE[:-1]), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Apply random transforms after caching
     x_train = x_train.shuffle(BUFFER_SIZE).map(augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
@@ -170,11 +163,9 @@ def main():
     x_test = x_test.batch(BATCH_SIZE)
 
     # Optional gradient-based input (Prewitt and Sobel filters must be applied after batching)
-    for key, value in INPUT_FILTER_DICT.items():
-        if key in DATASET:
-            x_train = x_train.map(value, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            x_val = x_val.map(value, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-            x_test = x_test.map(value, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_train = x_train.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_val = x_val.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_test = x_test.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # Prefetch data
     x_train = x_train.prefetch(tf.data.experimental.AUTOTUNE)
