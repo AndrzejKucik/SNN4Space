@@ -6,9 +6,9 @@ evaluates it.
 """
 
 # -- Built-in modules -- #
+import os
 from argparse import ArgumentParser
 from datetime import timedelta
-import os
 from pathlib import Path
 from time import time
 
@@ -24,14 +24,23 @@ from utils import input_filter_map, plot_spikes, rescale_resize
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
+__contributor__ = 'Gabriele Meoni'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.5'
-__date__ = '2021-02-12'
+__version__ = '0.2.6'
+__date__ = '2021-02-15'
 
 # - Assertions to ensure modules compatibility - #
 assert nengo.__version__ == '3.1.0', 'Nengo version is {}, and it should be 3.1.0 instead.'.format(nengo.__version__)
 assert nengo_dl.__version__ == '3.4.0', 'NengoDL version is {}, and it should be 3.4.0'.format(nengo_dl.__version__)
+
+color_dictionary = {'red': '\033[0;31m',
+                    'black': '\033[0m',
+                    'green': '\033[0;32m',
+                    'orange': '\033[0;33m',
+                    'purple': '\033[0;35m',
+                    'blue': '\033[0;34m',
+                    'cyan': '\033[0;36m'}
 
 # - Parameters - #
 N_NEURONS = 1000
@@ -67,12 +76,24 @@ def main():
     # noinspection PyUnboundLocalVariable
     input_shape = model.input.shape[1:]
     num_classes = model.output.shape[-1]
+
+    # Different dataset parameters
     if input_shape == (64, 64, 3) and num_classes == 10:
         dataset = 'eurosat'
+        print('Using', color_dictionary['red'], 'EuroSAT', color_dictionary['black'], 'dataset...', )
+        _, _, x_test, labels = load_eurosat()
+        num_test = 2700
     elif input_shape == (224, 224, 3) and num_classes == 21:
         dataset = 'ucm'
+        print('Using', color_dictionary['red'], 'UCM', color_dictionary['black'], 'dataset...')
+        _, _, x_test, labels = load_ucm()
+        num_test = 210
     else:
         exit('Invalid model!')
+
+    # Add the input filter name to the dataset
+    if input_filter != '':
+        dataset += '_' + input_filter
 
     # Nengo does not like regularization and dropout so we have to create a new model without them
     # - Input layer
@@ -129,18 +150,6 @@ def main():
 
     # - Show model's summary
     new_model.summary()
-
-    # Load data
-    if dataset == 'eurosat':
-        _, _, x_test, labels = load_eurosat()
-        num_test = 2700
-    else:  # dataset == 'ucm`
-        _, _, x_test, labels = load_ucm()
-        num_test = 210
-
-    # Add the input filter name to the dataset
-    if input_filter != '':
-        dataset += '_' + input_filter
 
     # Apply preprocessing function and batch
     x_test = x_test.map(rescale_resize(image_size=input_shape[:-1]),
