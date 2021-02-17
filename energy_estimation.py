@@ -21,8 +21,8 @@ from utils import input_filter_map, rescale_resize
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.4'
-__date__ = '2021-02-16'
+__version__ = '0.1.5'
+__date__ = '2021-02-17'
 
 color_dictionary = {'red': '\033[0;31m',
                     'black': '\033[0m',
@@ -373,7 +373,7 @@ def main():
     print(color_dictionary['green'], 'Converting model to Nengo model...', color_dictionary['black'])
 
     # Convert to a Nengo network
-    converter = nengo_dl.Converter(model,
+    converter = nengo_dl.Converter(new_model,
                                    scale_firing_rates=scale,
                                    synapse=synapse,
                                    swap_activations={tf.nn.relu: nengo.SpikingRectifiedLinear()})
