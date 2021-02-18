@@ -13,10 +13,20 @@ import tensorflow_io as tfio
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
+__contributors__ = 'Gabriele Meoni'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.7'
-__date__ = '2021-02-12'
+__version__ = '0.1.8'
+__date__ = '2021-02-18'
+
+# Colour dictionary
+COLOUR_DICTIONARY = {'red': '\033[0;31m',
+                     'black': '\033[0m',
+                     'green': '\033[0;32m',
+                     'orange': '\033[0;33m',
+                     'purple': '\033[0;35m',
+                     'blue': '\033[0;34m',
+                     'cyan': '\033[0;36m'}
 
 
 # - Image preprocessing and augmentation - #
