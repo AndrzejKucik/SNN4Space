@@ -15,22 +15,14 @@ import tensorflow as tf
 
 # -- Proprietary modules -- #
 from dataloaders import load_eurosat, load_ucm
-from utils import input_filter_map, rescale_resize
+from utils import COLOUR_DICTIONARY, input_filter_map, rescale_resize
 
 # -- File info -- #
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.5'
-__date__ = '2021-02-17'
-
-color_dictionary = {'red': '\033[0;31m',
-                    'black': '\033[0m',
-                    'green': '\033[0;32m',
-                    'orange': '\033[0;33m',
-                    'purple': '\033[0;35m',
-                    'blue': '\033[0;34m',
-                    'cyan': '\033[0;36m'}
+__version__ = '0.1.6'
+__date__ = '2021-02-18'
 
 
 def compute_connections(layer):
@@ -165,8 +157,12 @@ def energy_estimate_layer(model,
         'cpu': dict(spiking=False, energy_per_synop=8.6e-9, energy_per_neuron=8.6e-9),
         'gpu': dict(spiking=False, energy_per_synop=0.3e-9, energy_per_neuron=0.3e-9),
         'arm': dict(spiking=False, energy_per_synop=0.9e-9, energy_per_neuron=0.9e-9),
-        'myriad2': dict(spiking=False, energy_per_synop=1.9918386085474344e-10, energy_per_neuron=1.9918386085474344e-10),
-        # Value estimated by considering the energy for a MAC operaton. Such energy (E_per_mac) is obtained through a maximum-likelihood estimation: E_inf = E_per_mac * N_ops by, E_inf and N_ops values come from our previous work: 
+        'myriad2': dict(spiking=False, energy_per_synop=1.9918386085474344e-10,
+                        energy_per_neuron=1.9918386085474344e-10),
+
+        # Value estimated by considering the energy for a MAC operation. Such energy (E_per_mac) is obtained through a
+        # maximum-likelihood estimation: E_inf = E_per_mac * N_ops by, E_inf and N_ops values come from our previous
+        # work:
         # https://ieeexplore.ieee.org/abstract/document/8644728?casa_token=hGMtihotCFwAAAAA:cU4KR6XwZjkW7J3hOIWLwQddKlz5jezf4M7g95rqyFlPBEChLnrbuKwYq5CI7hHMxiHcQ9cHSg
 
         # https://www.researchgate.net/publication/322548911_Loihi_A_Neuromorphic_Manycore_Processor_with_On-Chip_Learning
@@ -272,8 +268,8 @@ def main():
                         action='store_true',
                         default=False,
                         help='If True, the energy contributions for all the layers is shown.')
-    parser.add_argument('-n',
-                        '--n_test',
+    parser.add_argument('-bs',
+                        '--batch_size',
                         type=int,
                         default=1,
                         help='Number of images used for energy estimation.')
@@ -288,7 +284,7 @@ def main():
     input_filter = args['input_filter'].lower()
     timesteps = args['timesteps']
     scale = args['scale']
-    n_test = args['n_test']
+    batch_size = args['batch_size']
     synapse = args['synapse']
     verbose = args['verbose']
 
@@ -305,11 +301,11 @@ def main():
 
     # Different datasets
     if input_shape == (64, 64, 3) and num_classes == 10:
-        print('Using', color_dictionary['red'], 'EuroSAT', color_dictionary['black'], 'dataset...', )
+        print('Using', COLOUR_DICTIONARY['red'], 'EuroSAT', COLOUR_DICTIONARY['black'], 'dataset...', )
         _, _, x_test, labels = load_eurosat()
         num_test = 2700
     elif input_shape == (224, 224, 3) and num_classes == 21:
-        print('Using', color_dictionary['red'], 'UCM', color_dictionary['black'], 'dataset...')
+        print('Using', COLOUR_DICTIONARY['red'], 'UCM', COLOUR_DICTIONARY['black'], 'dataset...')
         _, _, x_test, labels = load_ucm()
         num_test = 210
     else:
@@ -351,9 +347,7 @@ def main():
     x = tf.keras.layers.GlobalAveragePooling2D()(x)
 
     # - Output layer
-    x = tf.keras.layers.Dense(units=num_classes,
-                              use_bias=False,
-                              name=model.layers[-1].get_config()['name'])(x)
+    x = tf.keras.layers.Dense(units=num_classes, use_bias=False, name=model.layers[-1].get_config()['name'])(x)
 
     # - Define the  new model
     new_model = tf.keras.Model(input_layer, x)
@@ -371,9 +365,8 @@ def main():
     # - Show model's summary
     new_model.summary()
 
-    print(color_dictionary['green'], 'Converting model to Nengo model...', color_dictionary['black'])
-
-    # Convert to a Nengo network
+    # - Convert to a Nengo network
+    print(COLOUR_DICTIONARY['green'], 'Converting model to Nengo model...', COLOUR_DICTIONARY['black'])
     converter = nengo_dl.Converter(new_model,
                                    scale_firing_rates=scale,
                                    synapse=synapse,
@@ -381,6 +374,7 @@ def main():
 
     network_input = converter.inputs[input_layer]
 
+    # - Probe layers
     probe_layers = []
     with converter.net:
         for layer in new_model.layers:
@@ -397,60 +391,64 @@ def main():
 
     # - Tile images according to the number of timesteps
     x_test = np.array([n[0] for n in x_test]).squeeze(0)
-    x_test = x_test[0:n_test]
+    x_test = x_test[:batch_size]
     tiled_test_images = np.tile(np.reshape(x_test, (x_test.shape[0], 1, -1)), (1, timesteps, 1))
 
-    print(color_dictionary['blue'], 'Start simulation...', color_dictionary['black'])
-
+    # Run the simulation
+    print(COLOUR_DICTIONARY['blue'], 'Start simulation...', COLOUR_DICTIONARY['black'])
     with nengo_dl.Simulator(converter.net) as sim:
         # Record how much time it takes
         start = time()
         data = sim.predict({network_input: tiled_test_images})
         print('Time to make a prediction with {} timestep(s): {}.'.format(timesteps, timedelta(seconds=time() - start)))
 
-    for device_ann in ["cpu", "gpu", "myriad2"]:
-        print(color_dictionary["cyan"],"--------- ANN model ---------",color_dictionary["black"])
-        print("\tHardware: ", color_dictionary["red"], device_ann, color_dictionary["black"])
+    # Energy estimations
+    # - ANN energy estimation
+    for device_ann in ['cpu', 'gpu', 'myriad2']:
+        print(COLOUR_DICTIONARY['cyan'], '--------- ANN model ---------', COLOUR_DICTIONARY['black'])
+        print('\tHardware: ', COLOUR_DICTIONARY['red'], device_ann, COLOUR_DICTIONARY['black'])
         neuron_energy, synop_energy = 0, 0
         for layer_idx in range(len(model.layers)):
-            neuron_energy_layer, synop_energy_layer = energy_estimate_layer(
-                model,
-                layer_idx,
-                spikes_measurements=data,
-                probe_layers=probe_layer,
-                dt=sim.dt,
-                spiking_model=False,
-                device=device_ann,
-                verbose=verbose,
-            )
+            neuron_energy_layer, synop_energy_layer = energy_estimate_layer(model,
+                                                                            layer_idx,
+                                                                            spikes_measurements=data,
+                                                                            probe_layers=probe_layers,
+                                                                            dt=sim.dt,
+                                                                            spiking_model=False,
+                                                                            device=device_ann,
+                                                                            verbose=verbose)
             neuron_energy += neuron_energy_layer
             synop_energy += synop_energy_layer
-        print(color_dictionary["orange"],"\t--------- Total energy ---------", color_dictionary["black"])
-        print("\tSynop energy: ", synop_energy, "J/inference")
-        print("\tNeuron energy: ", neuron_energy, "J/inference")
-        print("\tTotal energy:",color_dictionary["green"], synop_energy + neuron_energy, color_dictionary["black"],"J/inference\n\n")
-    for device_snn in ["loihi", "spinnaker", "spinnaker2"]:
+
+        print(COLOUR_DICTIONARY['orange'], '\t--------- Total energy ---------', COLOUR_DICTIONARY['black'])
+        print('\tSynop energy: ', synop_energy, 'J/inference')
+        print('\tNeuron energy: ', neuron_energy, 'J/inference')
+        print('\tTotal energy:', COLOUR_DICTIONARY['green'], synop_energy + neuron_energy, COLOUR_DICTIONARY['black'],
+              'J/inference\n\n')
+
+    # - SNN energy estimation
+    for device_snn in ['loihi', 'spinnaker', 'spinnaker2']:
         neuron_energy, synop_energy = 0, 0
-        print(color_dictionary["cyan"],"--------- SNN model ---------",color_dictionary["black"])
-        print("\tHardware: ", color_dictionary["red"], device_snn, color_dictionary["black"])
+        print(COLOUR_DICTIONARY['cyan'], '--------- SNN model ---------', COLOUR_DICTIONARY['black'])
+        print('\tHardware: ', COLOUR_DICTIONARY['red'], device_snn, COLOUR_DICTIONARY['black'])
         for layer_idx in range(len(model.layers)):
-            neuron_energy_layer, synop_energy_layer = energy_estimate_layer(
-                model,
-                layer_idx,
-                spikes_measurements=data,
-                probe_layers=probe_layer,
-                dt=sim.dt,
-                spiking_model=True,
-                device=device_snn,
-                verbose=verbose,
-            )
+            neuron_energy_layer, synop_energy_layer = energy_estimate_layer(model,
+                                                                            layer_idx,
+                                                                            spikes_measurements=data,
+                                                                            probe_layers=probe_layers,
+                                                                            dt=sim.dt,
+                                                                            spiking_model=True,
+                                                                            device=device_snn,
+                                                                            verbose=verbose)
             neuron_energy += neuron_energy_layer
             synop_energy += synop_energy_layer
-        print(color_dictionary["orange"],"\t--------- Total energy ---------", color_dictionary["black"])
-        print("\tSynop energy: ", synop_energy, "J/inference")
-        print("\tNeuron energy: ", neuron_energy, "J/inference")
-        print("\tTotal energy:",color_dictionary["green"], synop_energy + neuron_energy, color_dictionary["black"],"J/inference\n\n")
+        print(COLOUR_DICTIONARY['orange'], '\t--------- Total energy ---------', COLOUR_DICTIONARY['black'])
+        print('\tSynop energy: ', synop_energy, 'J/inference')
+        print('\tNeuron energy: ', neuron_energy, 'J/inference')
+        print('\tTotal energy:', COLOUR_DICTIONARY['green'], synop_energy + neuron_energy, COLOUR_DICTIONARY['black'],
+              'J/inference\n\n')
 
 
+# Main function
 if __name__ == '__main__':
     main()
