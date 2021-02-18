@@ -165,6 +165,9 @@ def energy_estimate_layer(model,
         'cpu': dict(spiking=False, energy_per_synop=8.6e-9, energy_per_neuron=8.6e-9),
         'gpu': dict(spiking=False, energy_per_synop=0.3e-9, energy_per_neuron=0.3e-9),
         'arm': dict(spiking=False, energy_per_synop=0.9e-9, energy_per_neuron=0.9e-9),
+        'myriad2': dict(spiking=False, energy_per_synop=1.9918386085474344e-10, energy_per_neuron=1.9918386085474344e-10),
+        # Value estimated by considering the energy for a MAC operaton. Such energy (E_per_mac) is obtained through a maximum-likelihood estimation: E_inf = E_per_mac * N_ops by, E_inf and N_ops values come from our previous work: 
+        # https://ieeexplore.ieee.org/abstract/document/8644728?casa_token=hGMtihotCFwAAAAA:cU4KR6XwZjkW7J3hOIWLwQddKlz5jezf4M7g95rqyFlPBEChLnrbuKwYq5CI7hHMxiHcQ9cHSg
 
         # https://www.researchgate.net/publication/322548911_Loihi_A_Neuromorphic_Manycore_Processor_with_On-Chip_Learning
         'loihi': dict(spiking=True, energy_per_synop=(23.6 + 3.5) * 1e-12, energy_per_neuron=81e-12),
@@ -284,8 +287,6 @@ def main():
     path_to_model = args['model_path']
     input_filter = args['input_filter'].lower()
     timesteps = args['timesteps']
-    device_ann = args['device_ann']
-    device_snn = args['device_snn']
     scale = args['scale']
     n_test = args['n_test']
     synapse = args['synapse']
@@ -407,46 +408,48 @@ def main():
         data = sim.predict({network_input: tiled_test_images})
         print('Time to make a prediction with {} timestep(s): {}.'.format(timesteps, timedelta(seconds=time() - start)))
 
-    print(color_dictionary['cyan'], '--------- ANN model ---------', color_dictionary['black'])
-    print('\tHardware: ', color_dictionary['red'], device_ann, color_dictionary['black'])
-    neuron_energy, synop_energy = 0, 0
-    for layer_idx in range(len(model.layers)):
-        neuron_energy_layer, synop_energy_layer = energy_estimate_layer(model,
-                                                                        layer_idx,
-                                                                        spikes_measurements=data,
-                                                                        probe_layers=probe_layers,
-                                                                        dt=sim.dt,
-                                                                        spiking_model=False,
-                                                                        device=device_ann,
-                                                                        verbose=verbose)
-
-        neuron_energy += neuron_energy_layer
-        synop_energy += synop_energy_layer
-    print(color_dictionary['orange'], '\t--------- Total energy ---------', color_dictionary['black'])
-    print('\tSynop energy: ', synop_energy, 'J/inference')
-    print('\tNeuron energy: ', neuron_energy, 'J/inference')
-    print('\tTotal energy:', color_dictionary['green'], synop_energy + neuron_energy, color_dictionary['black'],
-          'J/inference\n\n')
-
-    neuron_energy, synop_energy = 0, 0
-    print(color_dictionary['cyan'], '--------- SNN model ---------', color_dictionary['black'])
-    print('\tHardware: ', color_dictionary['red'], device_snn, color_dictionary['black'])
-    for layer_idx in range(len(model.layers)):
-        neuron_energy_layer, synop_energy_layer = energy_estimate_layer(model,
-                                                                        layer_idx,
-                                                                        spikes_measurements=data,
-                                                                        probe_layers=probe_layers,
-                                                                        dt=sim.dt,
-                                                                        spiking_model=True,
-                                                                        device=device_snn,
-                                                                        verbose=verbose)
-        neuron_energy += neuron_energy_layer
-        synop_energy += synop_energy_layer
-    print(color_dictionary['orange'], '\t--------- Total energy ---------', color_dictionary['black'])
-    print('\tSynop energy: ', synop_energy, 'J/inference')
-    print('\tNeuron energy: ', neuron_energy, 'J/inference')
-    print('\tTotal energy:', color_dictionary['green'], synop_energy + neuron_energy, color_dictionary['black'],
-          'J/inference\n\n')
+    for device_ann in ["cpu", "gpu", "myriad2"]:
+        print(color_dictionary["cyan"],"--------- ANN model ---------",color_dictionary["black"])
+        print("\tHardware: ", color_dictionary["red"], device_ann, color_dictionary["black"])
+        neuron_energy, synop_energy = 0, 0
+        for layer_idx in range(len(model.layers)):
+            neuron_energy_layer, synop_energy_layer = energy_estimate_layer(
+                model,
+                layer_idx,
+                spikes_measurements=data,
+                probe_layers=probe_layer,
+                dt=sim.dt,
+                spiking_model=False,
+                device=device_ann,
+                verbose=verbose,
+            )
+            neuron_energy += neuron_energy_layer
+            synop_energy += synop_energy_layer
+        print(color_dictionary["orange"],"\t--------- Total energy ---------", color_dictionary["black"])
+        print("\tSynop energy: ", synop_energy, "J/inference")
+        print("\tNeuron energy: ", neuron_energy, "J/inference")
+        print("\tTotal energy:",color_dictionary["green"], synop_energy + neuron_energy, color_dictionary["black"],"J/inference\n\n")
+    for device_snn in ["loihi", "spinnaker", "spinnaker2"]:
+        neuron_energy, synop_energy = 0, 0
+        print(color_dictionary["cyan"],"--------- SNN model ---------",color_dictionary["black"])
+        print("\tHardware: ", color_dictionary["red"], device_snn, color_dictionary["black"])
+        for layer_idx in range(len(model.layers)):
+            neuron_energy_layer, synop_energy_layer = energy_estimate_layer(
+                model,
+                layer_idx,
+                spikes_measurements=data,
+                probe_layers=probe_layer,
+                dt=sim.dt,
+                spiking_model=True,
+                device=device_snn,
+                verbose=verbose,
+            )
+            neuron_energy += neuron_energy_layer
+            synop_energy += synop_energy_layer
+        print(color_dictionary["orange"],"\t--------- Total energy ---------", color_dictionary["black"])
+        print("\tSynop energy: ", synop_energy, "J/inference")
+        print("\tNeuron energy: ", neuron_energy, "J/inference")
+        print("\tTotal energy:",color_dictionary["green"], synop_energy + neuron_energy, color_dictionary["black"],"J/inference\n\n")
 
 
 if __name__ == '__main__':
