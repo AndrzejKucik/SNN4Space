@@ -24,7 +24,7 @@ from utils import COLOUR_DICTIONARY, input_filter_map, plot_spikes, rescale_resi
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 __date__ = '2021-02-18'
 
 COLUMN_NAMES = ['date',  # Date
@@ -178,8 +178,7 @@ def energy_estimate_layer(model,
 
         # Value estimated by considering the energy for a MAC operation. Such energy (E_per_mac) is obtained through a
         # maximum-likelihood estimation: E_inf = E_per_mac * N_ops by, E_inf and N_ops values come from our previous
-        # work:
-        # https://ieeexplore.ieee.org/abstract/document/8644728?casa_token=hGMtihotCFwAAAAA:cU4KR6XwZjkW7J3hOIWLwQddKlz5jezf4M7g95rqyFlPBEChLnrbuKwYq5CI7hHMxiHcQ9cHSg
+        # work: https://ieeexplore.ieee.org/abstract/document/8644728
 
         # https://www.researchgate.net/publication/322548911_Loihi_A_Neuromorphic_Manycore_Processor_with_On-Chip_Learning
         'loihi': dict(spiking=True, energy_per_synop=(23.6 + 3.5) * 1e-12, energy_per_neuron=81e-12),
