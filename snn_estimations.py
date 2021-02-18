@@ -426,7 +426,7 @@ def main():
     x_test = x_test.map(input_filter_map(filter_name=input_filter), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # - Evaluate the ANN model
-    _, ann_acc = 0, 0  # new_model.evaluate(x=x_test)
+    _, ann_acc = new_model.evaluate(x=x_test)
     print(COLOUR_DICTIONARY['purple'], 'ANN model accuracy: {:.2f}%.'.format(ann_acc * 100), COLOUR_DICTIONARY['black'])
 
     # Test SNN
