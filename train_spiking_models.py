@@ -20,7 +20,7 @@ from utils import augment_image, input_filter_map, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __date__ = '2021-02-19'
 
 # - Argument parser - #
@@ -202,11 +202,9 @@ def main():
             super(DTScheduler, self).__init__()
             self.dt = dt
             self.scheduler = scheduler
-            self.step = 0
 
-        def on_train_batch_begin(self, batch, logs=None):
-            self.dt.assign(self.scheduler.__call__(step=self.step))
-            self.step += 1
+        def on_epoch_begin(self, epoch, logs=None):
+            self.dt.assign(self.scheduler.__call__(step=epoch))
 
     log_dir = 'logs/fit/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
     callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1),
