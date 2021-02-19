@@ -7,7 +7,6 @@ import csv
 import os
 from argparse import ArgumentParser
 from datetime import datetime, timedelta
-from pathlib import Path
 from time import time
 
 # -- Third-party modules -- #
@@ -15,17 +14,18 @@ import nengo
 import nengo_dl
 import numpy as np
 import tensorflow as tf
+from tqdm import trange
 
 # -- Proprietary modules -- #
 from dataloaders import load_eurosat, load_ucm
-from utils import COLOUR_DICTIONARY, input_filter_map, plot_spikes, rescale_resize
+from utils import COLOUR_DICTIONARY, input_filter_map, rescale_resize
 
 # -- File info -- #
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.1'
-__date__ = '2021-02-18'
+__version__ = '0.2.2'
+__date__ = '2021-02-19'
 
 COLUMN_NAMES = ['date',  # Date
                 'model_path', 'input_filter', 'batch_size',  # Model  parameters
@@ -276,7 +276,7 @@ def energy_estimate_model(model,
         print('\tTotal energy:', COLOUR_DICTIONARY['green'], synop_energy + neuron_energy, COLOUR_DICTIONARY['black'],
               'J/inference\n\n')
 
-    return neuron_energy, synop_energy
+    return np.array([neuron_energy, synop_energy])
 
 
 # noinspection PyUnboundLocalVariable
@@ -294,7 +294,7 @@ def main():
                         '--batch_size',
                         type=int,
                         default=1,
-                        help='Number of images used for energy estimation.')
+                        help='Batch size for the SNN testing. Must be a positive integer')
     parser.add_argument('-if',
                         '--input_filter',
                         type=str,
@@ -333,7 +333,6 @@ def main():
     # Load model
     try:
         model = tf.keras.models.load_model(filepath=path_to_model)
-        model.summary()
     except OSError:
         exit('Invalid model path!')
 
@@ -344,16 +343,12 @@ def main():
     # Different datasets
     if input_shape == (64, 64, 3) and num_classes == 10:
         dataset = 'EuroSAT'
+        n_test = 2700
         _, _, x_test, labels = load_eurosat()
-        if batch_size is None or batch_size < 1 or batch_size > 2700:
-            batch_size = 2700
-
     elif input_shape == (224, 224, 3) and num_classes == 21:
         dataset = 'UCM'
         _, _, x_test, labels = load_ucm()
-        if batch_size is None or batch_size < 1 or batch_size > 210:
-            batch_size = 210
-
+        n_test = 210
     else:
         exit('Invalid model!')
 
@@ -422,16 +417,15 @@ def main():
     x_test = x_test.map(rescale_resize(image_size=input_shape[:-1]), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # -- Apply input filter (x_test must be batched!)
-    x_test = x_test.batch(batch_size=batch_size)
+    x_test = x_test.batch(batch_size=n_test)
     x_test = x_test.map(input_filter_map(filter_name=input_filter), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # - Evaluate the ANN model
-    _, ann_acc = new_model.evaluate(x=x_test)
-    print(COLOUR_DICTIONARY['purple'], 'ANN model accuracy: {:.2f}%.'.format(ann_acc * 100), COLOUR_DICTIONARY['black'])
+    _, ann_acc = new_model.evaluate(x=x_test, verbose=verbose)
 
     # Test SNN
     # - Convert to a Nengo network
-    print(COLOUR_DICTIONARY['green'], 'Converting model to Nengo model...', COLOUR_DICTIONARY['black'])
+    print(COLOUR_DICTIONARY['green'], 'Converting Keras model to Nengo network...', COLOUR_DICTIONARY['black'])
     converter = nengo_dl.Converter(new_model,
                                    scale_firing_rates=scale,
                                    synapse=synapse,
@@ -457,60 +451,47 @@ def main():
     tiled_test_images = np.tile(np.reshape(x_test, (x_test.shape[0], 1, -1)), (1, timesteps, 1))
     test_labels = y_test.reshape((y_test.shape[0], 1, -1))
 
-    # Run the simulation
-    print(COLOUR_DICTIONARY['blue'], 'Start simulation...', COLOUR_DICTIONARY['black'])
-    with nengo_dl.Simulator(converter.net) as sim:
-        # - Record how much time it takes
-        start = time()
-        data = sim.predict({network_input: tiled_test_images})
-        simulation_len = timedelta(seconds=time() - start)
+    # - Placeholders
+    energy_estimates = {'loihi': np.zeros((2,)), 'spinnaker': np.zeros((2,)), 'spinnaker2': np.zeros((2,))}
+    snn_acc = 0.
 
-        if verbose:
-            print('\nTime to make a prediction on a batch of ',
-                  COLOUR_DICTIONARY['blue'], batch_size,
-                  COLOUR_DICTIONARY['black'], ' examples and with ',
-                  COLOUR_DICTIONARY['blue'], timesteps,
-                  COLOUR_DICTIONARY['black'], 'timestep(s): ',
-                  COLOUR_DICTIONARY['blue'], simulation_len,
-                  COLOUR_DICTIONARY['black'], '.\n')
+    # - Number of test steps
+    n_test_steps = int(n_test / batch_size)
 
-    # - Predictions and accuracy
-    predictions = np.argmax(data[network_output][:, -1], axis=-1)
-    snn_acc = (predictions == test_labels[..., 0, 0]).mean()
+    # - Run the simulations
+    print(COLOUR_DICTIONARY['blue'], 'Start simulations...', COLOUR_DICTIONARY['black'])
+    # -- Record how much time it takes
+    start = time()
+    with nengo_dl.Simulator(converter.net, progress_bar=False) as sim:
+        for i in trange(n_test_steps):
+            data = sim.predict({network_input: tiled_test_images[i * batch_size:(i + 1) * batch_size]}, stateful=False)
 
-    if verbose:
-        print(COLOUR_DICTIONARY['purple'], 'SNN test accuracy: {:.2f}%'.format(100 * snn_acc),
-              COLOUR_DICTIONARY['black'], ' (firing rate scale factor: {}, synapse: {}).\n'.format(scale, synapse))
+            # -- Predictions and accuracy
+            predictions = np.argmax(data[network_output][:, -1], axis=-1)
+            snn_acc += (predictions == test_labels[i * batch_size:(i + 1) * batch_size, 0, 0]).mean() / n_test_steps
 
-    # Energy estimations
-    energy_estimates = {}
-    # - ANN energy estimation
+            # -- SNN energy estimation
+            for device_snn in ['loihi', 'spinnaker', 'spinnaker2']:
+                energy_estimates[device_snn] += energy_estimate_model(model,
+                                                                      spikes_measurements=data,
+                                                                      probe_layers=probe_layers,
+                                                                      dt=sim.dt,
+                                                                      spiking_model=True,
+                                                                      device=device_snn,
+                                                                      verbose=False) / n_test_steps
+
+    # -- Stop the timer
+    simulation_len = timedelta(seconds=time() - start)
+
+    # -- ANN energy estimation (only a single run required)
     for device_ann in ['cpu', 'gpu', 'myriad2']:
-        if verbose:
-            print(COLOUR_DICTIONARY['cyan'], '--------- ANN model ---------', COLOUR_DICTIONARY['black'])
-            print('\tHardware: ', COLOUR_DICTIONARY['red'], device_ann, COLOUR_DICTIONARY['black'])
-
         energy_estimates[device_ann] = energy_estimate_model(model,
                                                              spikes_measurements=data,
                                                              probe_layers=probe_layers,
                                                              dt=sim.dt,
                                                              spiking_model=False,
                                                              device=device_ann,
-                                                             verbose=verbose)
-
-    # - SNN energy estimation
-    for device_snn in ['loihi', 'spinnaker', 'spinnaker2']:
-        if verbose:
-            print(COLOUR_DICTIONARY['cyan'], '--------- SNN model ---------', COLOUR_DICTIONARY['black'])
-            print('\tHardware: ', COLOUR_DICTIONARY['red'], device_snn, COLOUR_DICTIONARY['black'])
-
-        energy_estimates[device_snn] = energy_estimate_model(model,
-                                                             spikes_measurements=data,
-                                                             probe_layers=probe_layers,
-                                                             dt=sim.dt,
-                                                             spiking_model=True,
-                                                             device=device_snn,
-                                                             verbose=verbose)
+                                                             verbose=False)
 
     # Write the results to a CSV file
     # - Create the file if it does not exist
@@ -530,7 +511,7 @@ def main():
             path_to_model, input_filter, batch_size,
 
             # Neuron parameters
-            synapse, synapse,
+            scale, synapse,
 
             # Timing data
             timesteps, simulation_len,
@@ -541,58 +522,63 @@ def main():
             # CPU
             energy_estimates['cpu'][0],
             energy_estimates['cpu'][1],
-            energy_estimates['cpu'][0] + energy_estimates['cpu'][1],
+            np.sum(energy_estimates['cpu']),
 
             # GPU
             energy_estimates['gpu'][0],
             energy_estimates['gpu'][1],
-            energy_estimates['gpu'][0] + energy_estimates['gpu'][1],
+            np.sum(energy_estimates['gpu']),
 
             # Myriad2
             energy_estimates['myriad2'][0],
             energy_estimates['myriad2'][1],
-            energy_estimates['myriad2'][0] + energy_estimates['myriad2'][1],
+            np.sum(energy_estimates['myriad2']),
 
             # Loihi
             energy_estimates['loihi'][0],
             energy_estimates['loihi'][1],
-            energy_estimates['loihi'][0] + energy_estimates['loihi'][1],
+            np.sum(energy_estimates['loihi']),
 
             # SpiNNaker
             energy_estimates['spinnaker'][0],
             energy_estimates['spinnaker'][1],
-            energy_estimates['spinnaker'][0] + energy_estimates['spinnaker'][1],
+            np.sum(energy_estimates['spinnaker']),
 
             # SpiNNaker2
             energy_estimates['spinnaker2'][0],
             energy_estimates['spinnaker2'][1],
-            energy_estimates['spinnaker2'][0] + energy_estimates['spinnaker2'][1],
+            np.sum(energy_estimates['spinnaker2'])
         ])
 
-        # Plot the spikes against the timesteps
-        if verbose and batch_size > 1:
-            # Make a new directory for the figures
-            model_name = Path(path_to_model).stem
-            path_to_figures = Path('figs/vgg16').joinpath(dataset.lower(),
-                                                          model_name,
-                                                          'scale_{}'.format(scale),
-                                                          'synapse_{}'.format(synapse),
-                                                          'timesteps_{}'.format(timesteps))
-            os.makedirs(path_to_figures, exist_ok=True)
+    # Print results
+    if verbose:
+        # - Time and batch info
+        print('\n\nTime to make SNN predictions with',
+              COLOUR_DICTIONARY['blue'], n_test, COLOUR_DICTIONARY['black'],
+              'examples and with',
+              COLOUR_DICTIONARY['blue'], timesteps, COLOUR_DICTIONARY['black'],
+              'timestep(s): ',
+              COLOUR_DICTIONARY['blue'], simulation_len, COLOUR_DICTIONARY['black'], '.\n')
 
-            # Plot
-            for i in range(0, min(10, batch_size // 2 + 1), 2):
-                plot_spikes(path_to_save=path_to_figures.joinpath('acc_{}_{}.png'.format(snn_acc, i // 2)),
-                            examples=((255 * x_test).astype('uint8'), y_test),
-                            start=i,
-                            stop=i + 2,
-                            labels=labels,
-                            simulator=sim,
-                            data=data,
-                            probe=probe_layers[-2],
-                            network_output=network_output,
-                            n_steps=timesteps,
-                            scale=scale)
+        # - Accuracies
+        print(COLOUR_DICTIONARY['purple'], 'ANN test accuracy: {:.2f}%.'.format(ann_acc * 100),
+              COLOUR_DICTIONARY['black'])
+        print(COLOUR_DICTIONARY['purple'], 'SNN test accuracy: {:.2f}%'.format(100 * snn_acc),
+              COLOUR_DICTIONARY['black'],
+              ' (firing rate scale factor: {}, synapse: {}).\n'.format(scale, synapse))
+
+        # -- Energy estimates
+        for device in ['cpu', 'gpu', 'myriad2', 'loihi', 'spinnaker', 'spinnaker2']:
+            if device == 'cpu':
+                print(COLOUR_DICTIONARY['cyan'], '--------- ANN model ---------', COLOUR_DICTIONARY['black'])
+            elif device == 'loihi':
+                print(COLOUR_DICTIONARY['cyan'], '--------- SNN model ---------', COLOUR_DICTIONARY['black'])
+
+            print('\tHardware: ', COLOUR_DICTIONARY['red'], device, COLOUR_DICTIONARY['black'])
+            print('\tSynop energy: ', energy_estimates[device][0], 'J/inference')
+            print('\tNeuron energy: ', energy_estimates[device][1], 'J/inference')
+            print('\tTotal energy:', COLOUR_DICTIONARY['green'], np.sum(energy_estimates[device]),
+                  COLOUR_DICTIONARY['black'], 'J/inference\n\n')
 
 
 # Main function
