@@ -16,8 +16,8 @@ __author__ = 'Andrzej S. Kucik'
 __contributors__ = 'Gabriele Meoni'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.8'
-__date__ = '2021-02-18'
+__version__ = '0.1.9'
+__date__ = '2021-02-19'
 
 # Colour dictionary
 COLOUR_DICTIONARY = {'red': '\033[0;31m',
@@ -182,6 +182,12 @@ def input_filter_map(filter_name: str):
         return new_images, label
 
     return image_filter
+
+
+def add_temporal_dim(timesteps: int = 1):
+    """Repeats the image along the temporal dimension (Applied after batching)."""
+
+    return lambda image, label: (tf.repeat(tf.expand_dims(image, axis=1), timesteps, axis=1), label)
 
 
 # - Spikes visualization - #
