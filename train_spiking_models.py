@@ -1,6 +1,6 @@
 #!/usr/bin/env python3.6
 
-"""Spiking aware fine tuning of the VGG16 network on the UC Merced or EuroSAT datasets."""
+"""Spiking aware fine tuning of the VGG16 network trained on the EuroSAT RGB or UC Merced datasets."""
 
 # -- Built-in modules -- #
 import datetime
@@ -9,91 +9,159 @@ from argparse import ArgumentParser
 from pathlib import Path
 
 # -- Third-party modules -- #
+import numpy as np
 import tensorflow as tf
 
 # -- Proprietary modules -- #
-from create_models import create_spiking_vgg16_model
+from create_models import create_spiking_vgg16_model, create_vgg16_model
 from dataloaders import load_ucm, load_eurosat
-from utils import augment_image, input_filter_map, rescale_resize
+from utils import add_temporal_dim, augment, rescale_resize
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.1'
-__date__ = '2021-02-19'
+__version__ = '0.2.0'
+__date__ = '2021-02-24'
 
 # - Argument parser - #
 parser = ArgumentParser()
+# -- Path to a pretrained model
+parser.add_argument('-md',
+                    '--model_path',
+                    required=True,
+                    type=str,
+                    help='Path to a pretrained model. Make sure that it is consistent with the dataset.')
 # -- Dataset
-parser.add_argument('-ds', '--dataset', type=str, default='ucm',
+parser.add_argument('-ds',
+                    '--dataset',
+                    required=True,
+                    type=str,
+                    default='eurosat',
                     help='Dataset. Either `eurosat` or `ucm`. One can also add `prewitt`, `sobel`, `mask` or `sq`.')
 # -- Seed
-parser.add_argument('-s', '--seed', type=int, default=5, help='Global random seed.')
-# -- Training parameters
-parser.add_argument('-e', '--epochs', type=int, default=1000, help='Number of training epochs.')
-parser.add_argument('-bs', '--batch_size', type=int, default=32, help='Batch size (per replica).')
-parser.add_argument('-lr', '--learning_rate', type=float, default=0.001, help='Learning rate.')
-# -- Spike parameters
-parser.add_argument('-t', '--timesteps', type=int, default=1, help='Timesteps.')
-parser.add_argument('-dt', '--dt', type=float, default=0.001, help='Time delta.')
-parser.add_argument('-l2', '--l2', type=float, default=1e-4, help='L2 regularization for the spike frequencies.')
-parser.add_argument('-lhz', '--lower_hz', type=float, default=10, help='Lower frequency target for the spikes (Hz).')
-parser.add_argument('-uhz', '--upper_hz', type=float, default=20, help='Upper frequency target for the spikes (Hz).')
-parser.add_argument('-tau', '--tau', type=float, default=0.1, help='Time delta.')
-# -- Augmentation parameters
-parser.add_argument('-lz', '--lower_zoom', type=float, default=.95,
+parser.add_argument('-s',
+                    '--seed',
+                    type=int,
+                    default=5,
+                    help='Global random seed.')
+# -- Training parameters.
+# -- Since the training is done iteratively, they will either increase or decrease by a factor of 2.
+parser.add_argument('-e',
+                    '--epochs',
+                    type=int,
+                    default=16,
+                    help='Target number of epochs.')
+parser.add_argument('-bs',
+                    '--batch_size',
+                    type=int,
+                    default=16,
+                    help='Target batch size (per replica).')
+parser.add_argument('-lr',
+                    '--learning_rate',
+                    type=float,
+                    default=3e-5,
+                    help='Target learning rate.')
+# -- Spiking parameters
+parser.add_argument('-t',
+                    '--timesteps',
+                    type=int,
+                    default=2,
+                    help='Target number of simulation timesteps (the training starts with 1).')
+parser.add_argument('-dt',
+                    '--dt',
+                    type=float,
+                    default=1.,
+                    help='Starting time resolution for the simulation, this will be decayed during the training.')
+parser.add_argument('-l2',
+                    '--l2',
+                    type=float,
+                    default=1e-8,
+                    help='L2 regularization for the spike frequencies.')
+parser.add_argument('-lhz',
+                    '--lower_hz',
+                    type=float,
+                    default=10.,
+                    help='Lower frequency target for the spikes (Hz).')
+parser.add_argument('-uhz',
+                    '--upper_hz',
+                    type=float,
+                    default=20.,
+                    help='Upper frequency target for the spikes (Hz).')
+parser.add_argument('-tau',
+                    '--tau',
+                    type=float,
+                    default=0.1,
+                    help='Tau parameter for the low-pass filter.')
+# -- Augmentation parameters (the same as for ANN training).
+parser.add_argument('-lz',
+                    '--lower_zoom',
+                    type=float,
+                    default=.95,
                     help='Augmentation parameter. Lower bound for a random zoom factor. Must be positive.')
-parser.add_argument('-uz', '--upper_zoom', type=float, default=1.05,
+parser.add_argument('-uz',
+                    '--upper_zoom',
+                    type=float,
+                    default=1.05,
                     help='Augmentation parameter. Upper bound for a random zoom factor. '
                          + 'Must be bigger than lower_zoom.')
-parser.add_argument('-mbd', '--max_brightness_delta', type=float, default=.2,
+parser.add_argument('-mbd',
+                    '--max_brightness_delta',
+                    type=float,
+                    default=.2,
                     help='Augmentation parameter. Maximum brightness delta. Must be a non-negative float.')
-parser.add_argument('-mhd', '--max_hue_delta', type=float, default=.1,
+parser.add_argument('-mhd',
+                    '--max_hue_delta',
+                    type=float,
+                    default=.1,
                     help='Augmentation parameter. Maximum hue delta. Must be in the interval [0, .5].')
-parser.add_argument('-lc', '--lower_contrast', type=float, default=.2,
+parser.add_argument('-lc',
+                    '--lower_contrast',
+                    type=float,
+                    default=.2,
                     help='Augmentation parameter. Lower bound for a random contrast factor. Must be positive.')
-parser.add_argument('-uc', '--upper_contrast', type=float, default=1.8,
+parser.add_argument('-uc',
+                    '--upper_contrast',
+                    type=float,
+                    default=1.8,
                     help='Augmentation parameter. Upper bound for a random contrast factor. '
                          + 'Must be bigger than lower_contrast.')
-parser.add_argument('-ls', '--lower_saturation', type=float, default=.9,
+parser.add_argument('-ls',
+                    '--lower_saturation',
+                    type=float,
+                    default=.9,
                     help='Augmentation parameter. Lower bound for a random saturation factor. Must be positive.')
-parser.add_argument('-us', '--upper_saturation', type=float, default=1.1,
+parser.add_argument('-us',
+                    '--upper_saturation',
+                    type=float, default=1.1,
                     help='Augmentation parameter. Upper bound for a random saturation factor. '
                          + 'Must be bigger than lower_saturation.')
 
-# - Parse arguments
+# -- Parse arguments
 args = vars(parser.parse_args())
-# -- Dataset
+# --- Path to model
+MODEL_PATH = args['model_path']
+# --- Dataset
 DATASET = args['dataset'].lower()
-# -- Seed
+# --- Seed
 SEED = args['seed']
-# -- Training parameters
+# --- Training parameters
 EPOCHS = args['epochs']
 BATCH_PER_REPLICA = args['batch_size']
 LR = args['learning_rate']
-# -- Spikes parameters
+# --- Spikes parameters
 TIMESTEPS = args['timesteps']
 DT = args['dt']
 L2 = args['l2']
 LOWER_HZ = args['lower_hz']
 UPPER_HZ = args['upper_hz']
 TAU = args['tau']
-# -- Augmentation parameters
-LOWER_ZOOM = args['lower_zoom']
-UPPER_ZOOM = args['upper_zoom']
-MAX_BRIGHTNESS_DELTA = args['max_brightness_delta']
-MAX_HUE_DELTA = args['max_hue_delta']
-LOWER_CONTRAST = args['lower_contrast']
-UPPER_CONTRAST = args['upper_contrast']
-LOWER_SATURATION = args['lower_saturation']
-UPPER_SATURATION = args['upper_saturation']
 
 # Fix the dataset parameters
 if 'eurosat' in DATASET:
     INPUT_SHAPE = (64, 64, 3)
     NUM_CLASSES = 10
-    BUFFER_SIZE = 21600
+    BUFFER_SIZE = 2160
 elif 'ucm' in DATASET:
     INPUT_SHAPE = (224, 224, 3)
     NUM_CLASSES = 21
@@ -107,128 +175,167 @@ tf.random.set_seed(seed=SEED)
 # Strategy parameters (for multiple GPU training) #
 STRATEGY = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
 NUM_DEVICES = STRATEGY.num_replicas_in_sync
-print('Number of devices: {}'.format(NUM_DEVICES))
+print('\nNumber of devices: {}\n'.format(NUM_DEVICES))
 
 # Global batch size #
 BATCH_SIZE = BATCH_PER_REPLICA * NUM_DEVICES
 
-# Model filepath #
-MODEL_FILEPATH = Path('models/spiking_vgg16').joinpath(DATASET)
-os.makedirs(MODEL_FILEPATH, exist_ok=True)
-MODEL_FILEPATH = MODEL_FILEPATH.joinpath('s_{}_e_{}_bs_{}_lr_{}'.format(SEED, EPOCHS, BATCH_SIZE, LR)
-                                         + '_dt_{}_l2_{}_lhz_{}_uhz_{}_tau_{}'.format(DT, L2, LOWER_HZ, UPPER_HZ, TAU)
-                                         + '_lz_{}_uz_{}'.format(LOWER_ZOOM, UPPER_ZOOM)
-                                         + '_mbd_{}_mhd_{}'.format(MAX_BRIGHTNESS_DELTA, MAX_HUE_DELTA)
-                                         + '_lc_{}_uc_{}'.format(LOWER_CONTRAST, UPPER_CONTRAST)
-                                         + '_ls_{}_us_{}.h5'.format(LOWER_SATURATION, UPPER_SATURATION))
-
-
-def augment(image, label):
-    """Randomly augments the input images."""
-
-    image = augment_image(image=image,
-                          image_size=INPUT_SHAPE[:-1],
-                          lower_zoom=LOWER_ZOOM,
-                          upper_zoom=UPPER_ZOOM,
-                          max_brightness_delta=MAX_BRIGHTNESS_DELTA,
-                          max_hue_delta=MAX_HUE_DELTA,
-                          lower_contrast=LOWER_CONTRAST,
-                          upper_contrast=UPPER_CONTRAST,
-                          lower_saturation=LOWER_SATURATION,
-                          upper_saturation=UPPER_SATURATION)
-
-    return image, label
+# Get the exponents for scaling by a factor of 2.
+EXPONENT = int(np.log2(TIMESTEPS))
 
 
 # Main
 def main():
     """The main function."""
 
-    # Load data
+    # Prepare the data for training
+    # - Load data
     if 'eurosat' in DATASET:
         x_train, x_val, x_test, _ = load_eurosat()
     else:  # 'ucm' in DATASET
         x_train, x_val, x_test, _ = load_ucm()
 
-    # Apply preprocessing functions (no augmentation for the validation and test sets) after caching to avoid caching
-    # randomness
+    # - Resize and rescale the images, and cache the training and the validation sets for faster training
     x_train = x_train.map(rescale_resize(image_size=INPUT_SHAPE[:-1]),
                           num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
     x_val = x_val.map(rescale_resize(image_size=INPUT_SHAPE[:-1]),
                       num_parallel_calls=tf.data.experimental.AUTOTUNE).cache()
     x_test = x_test.map(rescale_resize(image_size=INPUT_SHAPE[:-1]), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    # Apply random transforms after caching
-    x_train = x_train.shuffle(BUFFER_SIZE).map(augment, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    # - Shuffle the training set and apply the augmentation (after caching to avoid caching randomness)
+    x_train = x_train.shuffle(BUFFER_SIZE).map(augment(image_size=INPUT_SHAPE[:-1], augmentation_parameters=args),
+                                               num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-    # Batch data
-    x_train = x_train.batch(BATCH_SIZE)
-    x_val = x_val.batch(BATCH_SIZE)
-    x_test = x_test.batch(BATCH_SIZE)
-
-    # Optional gradient-based input (Prewitt and Sobel filters must be applied after batching)
-    x_train = x_train.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    x_val = x_val.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    x_test = x_test.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
-    # Prefetch data
-    x_train = x_train.prefetch(tf.data.experimental.AUTOTUNE)
-    x_val = x_val.prefetch(tf.data.experimental.AUTOTUNE)
-    x_test = x_test.prefetch(tf.data.experimental.AUTOTUNE)
-
-    # Compile the model
+    # The model
     with STRATEGY.scope():
-        dt_var = tf.Variable(1.0)
-        # Create model
-        model = create_spiking_vgg16_model(input_shape=INPUT_SHAPE,
-                                           dt=DT,
+        # - A variable to be passed to the model as the simulation time resolution
+        dt_var = tf.Variable(DT, aggregation=tf.VariableAggregation.MEAN)
+
+        # - Functions to monitor the variables
+        # noinspection PyUnusedLocal
+        def dt_monitor(y_true, y_pred):
+            return dt_var.read_value()
+
+        # - Create a model
+        model = create_spiking_vgg16_model(model_path=MODEL_PATH,
+                                           input_shape=INPUT_SHAPE,
+                                           dt=dt_var,
                                            l2=L2,
                                            lower_hz=LOWER_HZ,
                                            upper_hz=UPPER_HZ,
                                            tau=TAU,
-                                           num_classes=NUM_CLASSES)
+                                           num_classes=NUM_CLASSES,
+                                           spiking_aware_training=True)
 
-        # Compile the model
+        # - Compile the model
         model.compile(optimizer=tf.keras.optimizers.RMSprop(LR),
                       loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
-                      metrics=tf.metrics.SparseCategoricalAccuracy())
+                      metrics=[tf.metrics.SparseCategoricalAccuracy(), dt_monitor])
 
-    # Show the summary of the model
+    # Show model's summary
     model.summary()
 
-    # Callbacks
-    class DTScheduler(tf.keras.callbacks.Callback):
-        def __init__(self, dt, scheduler):
-            super(DTScheduler, self).__init__()
-            self.dt = dt
-            self.scheduler = scheduler
+    # Iterate the training, by decreasing the batch size and the learning rate by a power of 2, and increasing the
+    # number of timesteps (also by a power of 2), until they reach the target size
+    for n in range(EXPONENT + 1):
+        # The data
+        # - Add the temporal dimension
+        timesteps = 2 ** n
+        x_train_t = x_train.map(add_temporal_dim(timesteps=timesteps), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        x_val_t = x_val.map(add_temporal_dim(timesteps=timesteps), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        x_test_t = x_test.map(add_temporal_dim(timesteps=timesteps), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
-        def on_epoch_begin(self, epoch, logs=None):
-            self.dt.assign(self.scheduler.__call__(step=epoch))
+        # - Batch the data
+        batch_size = 2 ** (EXPONENT - n) * BATCH_SIZE
+        x_train_t = x_train_t.batch(batch_size=batch_size)
+        x_val_t = x_val_t.batch(batch_size=batch_size)
+        x_test_t = x_test_t.batch(batch_size=batch_size)
 
-    log_dir = 'logs/fit/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
-    callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1),
-                 DTScheduler(dt=dt_var,
-                             scheduler=tf.keras.optimizers.schedules.ExponentialDecay(1.0,
-                                                                                      decay_steps=EPOCHS,
-                                                                                      decay_rate=DT ** (1 / EPOCHS),
-                                                                                      staircase=False)),
-                 tf.keras.callbacks.ReduceLROnPlateau(patience=50, verbose=True),
-                 tf.keras.callbacks.EarlyStopping(patience=100, verbose=True),
-                 tf.keras.callbacks.ModelCheckpoint(filepath=MODEL_FILEPATH, save_best_only=True, verbose=True, )]
+        # - Prefetch data
+        x_train_t = x_train_t.prefetch(tf.data.experimental.AUTOTUNE)
+        x_val_t = x_val_t.prefetch(tf.data.experimental.AUTOTUNE)
+        x_test_t = x_test_t.prefetch(tf.data.experimental.AUTOTUNE)
 
-    # Train the model
-    model.fit(x=x_train, epochs=EPOCHS, validation_data=x_val, callbacks=callbacks)
+        # Learning rate
+        lr = LR * 2 ** (EXPONENT - n)
+        tf.keras.backend.set_value(model.optimizer.learning_rate, lr)
 
-    # Load the best weights
-    model.load_weights(MODEL_FILEPATH)
+        # Epochs
+        epochs = EPOCHS * 2 ** (EXPONENT - n)
 
-    # Evaluate the model
-    loss, acc = model.evaluate(x=x_test)
-    print('Best model\'s accuracy: {:.2f}%.'.format(acc * 100))
+        # Callbacks
+        log_dir = 'logs/fit/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
+        callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1),
+                     tf.keras.callbacks.ReduceLROnPlateau(patience=epochs // 4, verbose=True),
+                     tf.keras.callbacks.EarlyStopping(monitor='dt_monitor',
+                                                      min_delta=0.001,
+                                                      patience=epochs // 4,
+                                                      mode='min',
+                                                      verbose=True)]
 
-    # Rename the best model file to include the accuracy in its name
-    os.rename(MODEL_FILEPATH, MODEL_FILEPATH.with_name(MODEL_FILEPATH.stem + '_acc_{:.2f}.h5'.format(acc * 100)))
+        # Print the training iteration parameters
+        print('\nStarting the training for {} epoch(s),'.format(epochs),
+              'with {} timestep(s)'.format(timesteps),
+              'on batches of {} example(s),'.format(batch_size),
+              'and the learning rate {}.'.format(LR * 2 ** (EXPONENT - n)),
+              '\nLearning rate reduced after {} epoch(s) of no improvement in the validation loss,'.format(epochs // 4),
+              'early stopping after {} epoch(s) of no decay of the dt value.\n'.format(epochs // 4))
+
+        # Train the model
+        print('Commencing the training on iteration {}/{}.'.format(n + 1, EXPONENT))
+        model.fit(x=x_train_t, epochs=epochs, validation_data=x_val_t, callbacks=callbacks)
+
+        for layer in model.layers:
+            if 'tau' in layer.get_config().keys():
+                print(layer.get_config()['name'])
+                print(len(layer.get_weights()))
+                for weight in layer.get_weights():
+                    print(weight.shape)
+                    print(weight)
+                    print('\n')
+
+        # Evaluate the model
+        loss, acc, dt_stop = model.evaluate(x=x_test_t, batch_size=batch_size, verbose=True)
+        print('\nModel\'s accuracy: {:.2f}%.\n'.format(acc * 100))
+
+        # Create a new ANN model to save the weights there
+        new_model = create_vgg16_model(input_shape=INPUT_SHAPE,
+                                       num_classes=NUM_CLASSES,
+                                       remove_pooling=True,
+                                       use_dense_bias=True)
+        for layer in new_model.layers:
+            weights = model.get_layer(name=layer.name).get_weights()
+            layer.set_weights(weights)
+
+        # Save model filepath
+        model_filepath = Path('models/spiking_vgg16').joinpath(DATASET)
+        os.makedirs(model_filepath, exist_ok=True)
+        model_filepath = model_filepath.joinpath('s_{}'.format(SEED)
+                                                 + '_e_{}'.format(epochs)
+                                                 + '_bs_{}'.format(batch_size)
+                                                 + '_lr_{}'.format(lr)
+                                                 + '_t_{}'.format(timesteps)
+                                                 + '_dt_{}'.format(dt_stop)
+                                                 + '_l2_{}'.format(timesteps, L2)
+                                                 + '_lhz_{}'.format(LOWER_HZ)
+                                                 + '_uhz_{}'.format(UPPER_HZ)
+                                                 + '_tau_{}'.format(TAU)
+                                                 + '_lz_{}'.format(args['lower_zoom'])
+                                                 + '_uz_{}'.format(args['upper_zoom'])
+                                                 + '_mbd_{}'.format(args['max_brightness_delta'])
+                                                 + '_mhd_{}'.format(args['max_hue_delta'])
+                                                 + '_lc_{}'.format(args['lower_contrast'])
+                                                 + '_uc_{}'.format(args['upper_contrast'])
+                                                 + '_ls_{}'.format(args['lower_saturation'])
+                                                 + '_us_{}'.format(args['upper_saturation'])
+                                                 + '_acc_{:.2f}.h5'.format(acc))
+
+        print('\nSaving the model to:' + str(model_filepath))
+
+        new_model.save(model_filepath)
+
+        # Delete this new model to conserve memory
+        del new_model
 
 
 if __name__ == '__main__':
