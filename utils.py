@@ -16,8 +16,8 @@ __author__ = 'Andrzej S. Kucik'
 __contributors__ = 'Gabriele Meoni'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.9'
-__date__ = '2021-02-19'
+__version__ = '0.1.10'
+__date__ = '2021-02-24'
 
 # Colour dictionary
 COLOUR_DICTIONARY = {'red': '\033[0;31m',
@@ -144,6 +144,43 @@ def augment_image(image,
     return image
 
 
+def augment(image_size: tuple, augmentation_parameters: dict):
+    """
+    Returns a function applying augmentation to input images and passing on their labels.
+
+    Parameters
+    ----------
+    image_size : tuple
+        Height and width of an input image.
+    augmentation_parameters : dict
+        Dictionary with values to be passed to the augmentation function as arguments.
+
+    Returns
+    -------
+    _augment : lambda
+        Augmentation function.
+    """
+
+    for parameter in ['lower_zoom', 'upper_zoom', 'max_brightness_delta', 'max_hue_delta',
+                      'lower_contrast', 'upper_contrast', 'lower_saturation', 'upper_saturation']:
+        assert parameter in augmentation_parameters.keys()
+
+    def _augment(image, label):
+        image = augment_image(image=image,
+                              image_size=image_size,
+                              lower_zoom=augmentation_parameters['lower_zoom'],
+                              upper_zoom=augmentation_parameters['upper_zoom'],
+                              max_brightness_delta=augmentation_parameters['max_brightness_delta'],
+                              max_hue_delta=augmentation_parameters['max_hue_delta'],
+                              lower_contrast=augmentation_parameters['lower_contrast'],
+                              upper_contrast=augmentation_parameters['upper_contrast'],
+                              lower_saturation=augmentation_parameters['lower_saturation'],
+                              upper_saturation=augmentation_parameters['upper_saturation'])
+        return image, label
+
+    return _augment
+
+
 # - Input filters - #
 def input_filter_map(filter_name: str):
     """
@@ -185,9 +222,9 @@ def input_filter_map(filter_name: str):
 
 
 def add_temporal_dim(timesteps: int = 1):
-    """Repeats the image along the temporal dimension (Applied after batching)."""
+    """Repeats the image along the temporal dimension (Applied before batching)."""
 
-    return lambda image, label: (tf.repeat(tf.expand_dims(image, axis=1), timesteps, axis=1), label)
+    return lambda image, label: (tf.repeat(tf.expand_dims(image, axis=0), timesteps, axis=0), label)
 
 
 # - Spikes visualization - #
