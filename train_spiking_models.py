@@ -21,7 +21,7 @@ from utils import add_temporal_dim, augment, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 __date__ = '2021-02-24'
 
 # - Argument parser - #
@@ -161,7 +161,7 @@ TAU = args['tau']
 if 'eurosat' in DATASET:
     INPUT_SHAPE = (64, 64, 3)
     NUM_CLASSES = 10
-    BUFFER_SIZE = 2160
+    BUFFER_SIZE = 21600
 elif 'ucm' in DATASET:
     INPUT_SHAPE = (224, 224, 3)
     NUM_CLASSES = 21
