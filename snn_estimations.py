@@ -24,8 +24,8 @@ from utils import COLOUR_DICTIONARY, input_filter_map, rescale_resize
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.2'
-__date__ = '2021-02-19'
+__version__ = '0.2.3'
+__date__ = '2021-02-24'
 
 COLUMN_NAMES = ['date',  # Date
                 'model_path', 'input_filter', 'batch_size',  # Model  parameters
@@ -39,6 +39,61 @@ COLUMN_NAMES = ['date',  # Date
                 'spinnaker_neuron_energy', 'spinnaker_synop_energy', 'spinnaker_total_energy',  # SpiNNaker
                 'spinnaker2_neuron_energy', 'spinnaker2_synop_energy', 'spinnaker2_total_energy'  # SpiNNaker2
                 ]
+
+# - Argument parser - #
+parser = ArgumentParser()
+# -- Model parameters
+parser.add_argument('-md',
+                    '--model_path',
+                    type=str,
+                    required=True,
+                    help='Path to the model to be tested.')
+parser.add_argument('-if',
+                    '--input_filter',
+                    type=str,
+                    default='',
+                    help='Type of the input filter (if any).')
+# -- Simulation parameters
+parser.add_argument('-bs',
+                    '--batch_size',
+                    type=int,
+                    default=1,
+                    help='Batch size for the SNN testing. Must be a positive integer')
+parser.add_argument('-t',
+                    '--timesteps',
+                    type=int,
+                    default=1,
+                    help='The length of the simulation. Must be a positive integer')
+parser.add_argument('-dt',
+                    '--dt',
+                    type=float,
+                    default=.001,
+                    help='Temporal resolution of the simulation.')
+parser.add_argument('-sc',
+                    '--scale',
+                    type=float,
+                    default=1.,
+                    help='Firing rate scale factor.')
+parser.add_argument('-syn',
+                    '--synapse',
+                    type=float,
+                    default=None,
+                    help='Synaptic filter tau constant.')
+parser.add_argument('-v',
+                    '--verbose',
+                    action='store_true',
+                    default=False,
+                    help='If True, the energy contributions for all the layers is shown.')
+
+args = vars(parser.parse_args())
+MODEL_PATH = args['model_path']
+INPUT_FILTER = args['input_filter'].lower()
+BATCH_SIZE = args['batch_size']
+TIMESTEPS = args['timesteps']
+DT = args['dt']
+SCALE = args['scale']
+SYNAPSE = args['synapse']
+VERBOSE = args['verbose']
 
 
 def compute_connections(layer):
@@ -283,56 +338,9 @@ def energy_estimate_model(model,
 def main():
     """The main function."""
 
-    # - Argument parser - #
-    parser = ArgumentParser()
-    parser.add_argument('-md',
-                        '--model_path',
-                        type=str,
-                        required=True,
-                        help='Path to the model.')
-    parser.add_argument('-bs',
-                        '--batch_size',
-                        type=int,
-                        default=1,
-                        help='Batch size for the SNN testing. Must be a positive integer')
-    parser.add_argument('-if',
-                        '--input_filter',
-                        type=str,
-                        default='',
-                        help='Type of the input filter (if any).')
-    parser.add_argument('-sc',
-                        '--scale',
-                        type=float,
-                        default=1.,
-                        help='Post simulation scale value.')
-    parser.add_argument('-syn',
-                        '--synapse',
-                        type=float,
-                        default=None,
-                        help='Synaptic filter alpha constant.')
-    parser.add_argument('-t',
-                        '--timesteps',
-                        type=int,
-                        default=1,
-                        help='Number of timesteps for the spiking model simulation.')
-    parser.add_argument('-v',
-                        '--verbose',
-                        action='store_true',
-                        default=False,
-                        help='If True, the energy contributions for all the layers is shown.')
-
-    args = vars(parser.parse_args())
-    path_to_model = args['model_path']
-    batch_size = args['batch_size']
-    input_filter = args['input_filter'].lower()
-    scale = args['scale']
-    synapse = args['synapse']
-    timesteps = args['timesteps']
-    verbose = args['verbose']
-
     # Load model
     try:
-        model = tf.keras.models.load_model(filepath=path_to_model)
+        model = tf.keras.models.load_model(filepath=MODEL_PATH)
     except OSError:
         exit('Invalid model path!')
 
@@ -387,12 +395,10 @@ def main():
                                                  padding=config['padding'])(x)
 
     # - Conclude VGG layers with a global average pooling layer
-    x = tf.keras.layers.GlobalAveragePooling2D()(x)
+    x = tf.keras.layers.GlobalAveragePooling2D(name='global_pool')(x)
 
     # - Output layer
-    output_layer = tf.keras.layers.Dense(units=num_classes,
-                                         use_bias=False,
-                                         name=model.layers[-1].get_config()['name'])(x)
+    output_layer = tf.keras.layers.Dense(units=num_classes, name=model.layers[-1].get_config()['name'])(x)
 
     # - Define the  new model
     new_model = tf.keras.Model(input_layer, output_layer)
@@ -408,7 +414,7 @@ def main():
                       metrics=tf.metrics.SparseCategoricalAccuracy())
 
     # - Show model's summary
-    if verbose:
+    if VERBOSE:
         new_model.summary()
 
     # Test ANN
@@ -418,17 +424,17 @@ def main():
 
     # -- Apply input filter (x_test must be batched!)
     x_test = x_test.batch(batch_size=n_test)
-    x_test = x_test.map(input_filter_map(filter_name=input_filter), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    x_test = x_test.map(input_filter_map(filter_name=INPUT_FILTER), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # - Evaluate the ANN model
-    _, ann_acc = new_model.evaluate(x=x_test, verbose=verbose)
+    _, ann_acc = new_model.evaluate(x=x_test, verbose=VERBOSE)
 
     # Test SNN
     # - Convert to a Nengo network
     print(COLOUR_DICTIONARY['green'], 'Converting Keras model to Nengo network...', COLOUR_DICTIONARY['black'])
     converter = nengo_dl.Converter(new_model,
-                                   scale_firing_rates=scale,
-                                   synapse=synapse,
+                                   scale_firing_rates=SCALE,
+                                   synapse=nengo.Lowpass(tau=SYNAPSE),
                                    swap_activations={tf.nn.relu: nengo.SpikingRectifiedLinear()})
 
     # - Input and output objects
@@ -448,7 +454,7 @@ def main():
     y_test = np.array([n[1] for n in test_data]).squeeze(0)
 
     # - Tile images according to the number of timesteps
-    tiled_test_images = np.tile(np.reshape(x_test, (x_test.shape[0], 1, -1)), (1, timesteps, 1))
+    tiled_test_images = np.tile(np.reshape(x_test, (x_test.shape[0], 1, -1)), (1, TIMESTEPS, 1))
     test_labels = y_test.reshape((y_test.shape[0], 1, -1))
 
     # - Placeholders
@@ -456,19 +462,19 @@ def main():
     snn_acc = 0.
 
     # - Number of test steps
-    n_test_steps = int(n_test / batch_size)
+    n_test_steps = int(n_test / BATCH_SIZE)
 
     # - Run the simulations
     print(COLOUR_DICTIONARY['blue'], 'Start simulations...', COLOUR_DICTIONARY['black'])
     # -- Record how much time it takes
     start = time()
-    with nengo_dl.Simulator(converter.net, progress_bar=False) as sim:
+    with nengo_dl.Simulator(converter.net, dt=DT, progress_bar=False) as sim:
         for i in trange(n_test_steps):
-            data = sim.predict({network_input: tiled_test_images[i * batch_size:(i + 1) * batch_size]}, stateful=False)
+            data = sim.predict({network_input: tiled_test_images[i * BATCH_SIZE:(i + 1) * BATCH_SIZE]}, stateful=False)
 
             # -- Predictions and accuracy
             predictions = np.argmax(data[network_output][:, -1], axis=-1)
-            snn_acc += (predictions == test_labels[i * batch_size:(i + 1) * batch_size, 0, 0]).mean() / n_test_steps
+            snn_acc += (predictions == test_labels[i * BATCH_SIZE:(i + 1) * BATCH_SIZE, 0, 0]).mean() / n_test_steps
 
             # -- SNN energy estimation
             for device_snn in ['loihi', 'spinnaker', 'spinnaker2']:
@@ -508,13 +514,13 @@ def main():
             datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
 
             # Model parameters
-            path_to_model, input_filter, batch_size,
+            MODEL_PATH, INPUT_FILTER, BATCH_SIZE,
 
             # Neuron parameters
-            scale, synapse,
+            SCALE, SYNAPSE,
 
             # Timing data
-            timesteps, simulation_len,
+            TIMESTEPS, simulation_len,
 
             # Accuracies
             ann_acc, snn_acc,
@@ -551,12 +557,12 @@ def main():
         ])
 
     # Print results
-    if verbose:
+    if VERBOSE:
         # - Time and batch info
         print('\n\nTime to make SNN predictions with',
               COLOUR_DICTIONARY['blue'], n_test, COLOUR_DICTIONARY['black'],
               'examples and with',
-              COLOUR_DICTIONARY['blue'], timesteps, COLOUR_DICTIONARY['black'],
+              COLOUR_DICTIONARY['blue'], TIMESTEPS, COLOUR_DICTIONARY['black'],
               'timestep(s): ',
               COLOUR_DICTIONARY['blue'], simulation_len, COLOUR_DICTIONARY['black'], '.\n')
 
@@ -565,7 +571,7 @@ def main():
               COLOUR_DICTIONARY['black'])
         print(COLOUR_DICTIONARY['purple'], 'SNN test accuracy: {:.2f}%'.format(100 * snn_acc),
               COLOUR_DICTIONARY['black'],
-              ' (firing rate scale factor: {}, synapse: {}).\n'.format(scale, synapse))
+              ' (firing rate scale factor: {}, synapse: {}).\n'.format(SCALE, SYNAPSE))
 
         # -- Energy estimates
         for device in ['cpu', 'gpu', 'myriad2', 'loihi', 'spinnaker', 'spinnaker2']:
