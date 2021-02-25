@@ -11,8 +11,8 @@ import tensorflow as tf
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.0'
-__date__ = '2021-02-24'
+__version__ = '0.2.1'
+__date__ = '2021-02-25'
 
 
 def remove_pooling_kernel(kernel):
@@ -132,7 +132,7 @@ def create_vgg16_model(input_shape: tuple = (224, 224, 3),
     return model
 
 
-def create_spiking_vgg16_model(model_path=None,
+def create_spiking_vgg16_model(model_path='',
                                input_shape: tuple = (224, 224, 3),
                                dt=0.001,
                                l2: float = 1e-4,
