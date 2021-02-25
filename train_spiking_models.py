@@ -21,7 +21,7 @@ from utils import add_temporal_dim, augment, DTStop, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.3'
+__version__ = '0.2.4'
 __date__ = '2021-02-25'
 
 # - Argument parser - #
@@ -183,6 +183,9 @@ BATCH_SIZE = BATCH_PER_REPLICA * NUM_DEVICES
 # Get the exponents for scaling by a factor of 2.
 EXPONENT = int(np.log2(TIMESTEPS))
 
+# Target dt
+DT_TARGET = 0.001  # 1ms
+
 
 # Main
 def main():
@@ -267,20 +270,18 @@ def main():
         log_dir = 'logs/fit/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1),
                      tf.keras.callbacks.ReduceLROnPlateau(patience=epochs // 4, verbose=True),
-                     DTStop(dt=dt_var, dt_min=.98),
-                     tf.keras.callbacks.EarlyStopping(monitor='dt_monitor',
-                                                      min_delta=0.001,
-                                                      patience=epochs // 4,
-                                                      mode='min',
-                                                      verbose=True)]
+                     tf.keras.callbacks.EarlyStopping(patience=epochs // 2, verbose=True)]
+
+        if dt_var.value() > DT_TARGET:
+            callbacks.append(DTStop(dt=dt_var, dt_min=DT_TARGET))
 
         # Print the training iteration parameters
         print('\nStarting the training for {} epoch(s),'.format(epochs),
               'with {} timestep(s)'.format(timesteps),
               'on batches of {} example(s),'.format(batch_size),
               'and the learning rate {}.'.format(LR * 2 ** (EXPONENT - n)),
-              '\nLearning rate reduced after {} epoch(s) of no improvement in the validation loss,'.format(epochs // 4),
-              'early stopping after {} epoch(s) of no decay of the dt value.\n'.format(epochs // 4))
+              '\nLearning rate reduced after {} epoch(s)'.format(epochs // 4),
+              'and early stopping after {} epoch(s) of no improvement in the validation loss.\n'.format(epochs // 2))
 
         # Train the model
         print('Commencing the training on iteration {}/{}.'.format(n + 1, EXPONENT))
@@ -337,7 +338,7 @@ def main():
         new_model.save(model_filepath)
 
         # We stop optimising dt here
-        if dt_stop <= 0.001:
+        if dt_stop <= DT_TARGET:
             model = new_model
 
         del new_model
