@@ -21,7 +21,7 @@ from utils import add_temporal_dim, augment, DTStop, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 __date__ = '2021-02-25'
 
 # - Argument parser - #
@@ -267,7 +267,7 @@ def main():
         log_dir = 'logs/fit/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1),
                      tf.keras.callbacks.ReduceLROnPlateau(patience=epochs // 4, verbose=True),
-                     DTStop(dt=dt_var, dt_min=.001),
+                     DTStop(dt=dt_var, dt_min=.98),
                      tf.keras.callbacks.EarlyStopping(monitor='dt_monitor',
                                                       min_delta=0.001,
                                                       patience=epochs // 4,
@@ -302,8 +302,8 @@ def main():
                                                    num_classes=NUM_CLASSES,
                                                    spiking_aware_training=True)
 
-            # - Load weights
-            new_model.set_weights(model.get_weights())
+            # - Load weights (skipping dt)
+            new_model.set_weights([w for w in model.get_weights() if w.shape != ()])
 
             # - Compile the model
             new_model.compile(optimizer=tf.keras.optimizers.RMSprop(LR),
