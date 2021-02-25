@@ -13,16 +13,16 @@ import numpy as np
 import tensorflow as tf
 
 # -- Proprietary modules -- #
-from create_models import create_spiking_vgg16_model, create_vgg16_model
+from create_models import create_spiking_vgg16_model
 from dataloaders import load_ucm, load_eurosat
-from utils import add_temporal_dim, augment, rescale_resize
+from utils import add_temporal_dim, augment, DTStop, rescale_resize
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.1'
-__date__ = '2021-02-24'
+__version__ = '0.2.2'
+__date__ = '2021-02-25'
 
 # - Argument parser - #
 parser = ArgumentParser()
@@ -76,7 +76,7 @@ parser.add_argument('-dt',
 parser.add_argument('-l2',
                     '--l2',
                     type=float,
-                    default=1e-8,
+                    default=1e-9,
                     help='L2 regularization for the spike frequencies.')
 parser.add_argument('-lhz',
                     '--lower_hz',
@@ -267,6 +267,7 @@ def main():
         log_dir = 'logs/fit/' + datetime.datetime.now().strftime('%Y%m%d-%H%M%S')
         callbacks = [tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1),
                      tf.keras.callbacks.ReduceLROnPlateau(patience=epochs // 4, verbose=True),
+                     DTStop(dt=dt_var, dt_min=.001),
                      tf.keras.callbacks.EarlyStopping(monitor='dt_monitor',
                                                       min_delta=0.001,
                                                       patience=epochs // 4,
@@ -285,27 +286,29 @@ def main():
         print('Commencing the training on iteration {}/{}.'.format(n + 1, EXPONENT))
         model.fit(x=x_train_t, epochs=epochs, validation_data=x_val_t, callbacks=callbacks)
 
-        for layer in model.layers:
-            if 'tau' in layer.get_config().keys():
-                print(layer.get_config()['name'])
-                print(len(layer.get_weights()))
-                for weight in layer.get_weights():
-                    print(weight.shape)
-                    print(weight)
-                    print('\n')
-
         # Evaluate the model
         loss, acc, dt_stop = model.evaluate(x=x_test_t, batch_size=batch_size, verbose=True)
         print('\nModel\'s accuracy: {:.2f}%.\n'.format(acc * 100))
 
-        # Create a new ANN model to save the weights there
-        new_model = create_vgg16_model(input_shape=INPUT_SHAPE,
-                                       num_classes=NUM_CLASSES,
-                                       remove_pooling=True,
-                                       use_dense_bias=True)
-        for layer in new_model.layers:
-            weights = model.get_layer(name=layer.name).get_weights()
-            layer.set_weights(weights)
+        # New model to avoid serialization issued
+        with STRATEGY.scope():
+            new_model = create_spiking_vgg16_model(model_path=MODEL_PATH,
+                                                   input_shape=INPUT_SHAPE,
+                                                   dt=dt_stop,
+                                                   l2=L2,
+                                                   lower_hz=LOWER_HZ,
+                                                   upper_hz=UPPER_HZ,
+                                                   tau=TAU,
+                                                   num_classes=NUM_CLASSES,
+                                                   spiking_aware_training=True)
+
+            # - Load weights
+            new_model.set_weights(model.get_weights())
+
+            # - Compile the model
+            new_model.compile(optimizer=tf.keras.optimizers.RMSprop(LR),
+                              loss=tf.losses.SparseCategoricalCrossentropy(from_logits=True),
+                              metrics=[tf.metrics.SparseCategoricalAccuracy()])
 
         # Save model filepath
         model_filepath = Path('models/spiking_vgg16').joinpath(DATASET)
@@ -319,7 +322,6 @@ def main():
                                                  + '_l2_{}'.format(timesteps, L2)
                                                  + '_lhz_{}'.format(LOWER_HZ)
                                                  + '_uhz_{}'.format(UPPER_HZ)
-                                                 + '_tau_{}'.format(TAU)
                                                  + '_lz_{}'.format(args['lower_zoom'])
                                                  + '_uz_{}'.format(args['upper_zoom'])
                                                  + '_mbd_{}'.format(args['max_brightness_delta'])
@@ -328,13 +330,16 @@ def main():
                                                  + '_uc_{}'.format(args['upper_contrast'])
                                                  + '_ls_{}'.format(args['lower_saturation'])
                                                  + '_us_{}'.format(args['upper_saturation'])
-                                                 + '_acc_{:.2f}.h5'.format(acc))
+                                                 + '_acc_{:.2f}'.format(acc))
 
+        # Save model
         print('\nSaving the model to:' + str(model_filepath))
-
         new_model.save(model_filepath)
 
-        # Delete this new model to conserve memory
+        # We stop optimising dt here
+        if dt_stop <= 0.001:
+            model = new_model
+
         del new_model
 
 

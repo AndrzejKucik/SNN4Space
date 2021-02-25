@@ -16,8 +16,8 @@ __author__ = 'Andrzej S. Kucik'
 __contributors__ = 'Gabriele Meoni'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.10'
-__date__ = '2021-02-24'
+__version__ = '0.1.11'
+__date__ = '2021-02-25'
 
 # Colour dictionary
 COLOUR_DICTIONARY = {'red': '\033[0;31m',
@@ -27,6 +27,19 @@ COLOUR_DICTIONARY = {'red': '\033[0;31m',
                      'purple': '\033[0;35m',
                      'blue': '\033[0;34m',
                      'cyan': '\033[0;36m'}
+
+
+class DTStop(tf.keras.callbacks.Callback):
+    """Stops dt updates after it has reach the desired minimum value (dt_min)."""
+
+    def __init__(self, dt, dt_min: float = 0.001):
+        super(DTStop).__init__()
+        self.dt = dt
+        self.dt_min = dt_min
+
+    def on_epoch_begin(self, epoch, logs=None):
+        if self.dt.value() <= self.dt_min:
+            self.dt.assign(self.dt_min)
 
 
 # - Image preprocessing and augmentation - #
