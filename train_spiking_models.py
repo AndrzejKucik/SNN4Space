@@ -21,8 +21,8 @@ from utils import add_temporal_dim, augment, DTStop, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.4'
-__date__ = '2021-02-25'
+__version__ = '0.2.5'
+__date__ = '2021-03-03'
 
 # - Argument parser - #
 parser = ArgumentParser()
@@ -46,7 +46,15 @@ parser.add_argument('-s',
                     default=5,
                     help='Global random seed.')
 # -- Training parameters.
-# -- Since the training is done iteratively, they will either increase or decrease by a factor of 2.
+# --- To speed-up the training, we may do it iteratively, by increasing the number of timesteps by a factor of 2,
+# --- starting with a single timestep. We can also start with large batch sizes, and decrease them (also by a factor of
+# --- 2), but then we must remember to lower the learning rate. The other parameters are treated as targets, so they
+# --- will be used in the final training step.
+parser.add_argument('-i',
+                    '--iterate',
+                    action='store_true',
+                    default=False,
+                    help='If `True`, then the training is iterative.')
 parser.add_argument('-e',
                     '--epochs',
                     type=int,
@@ -238,9 +246,10 @@ def main():
     # Show model's summary
     model.summary()
 
-    # Iterate the training, by decreasing the batch size and the learning rate by a power of 2, and increasing the
-    # number of timesteps (also by a power of 2), until they reach the target size
-    for n in range(EXPONENT + 1):
+    # Iterate or not
+    print(args['iterate'])
+    start = 0 if args['iterate'] else EXPONENT
+    for n in range(start, EXPONENT + 1):
         # The data
         # - Add the temporal dimension
         timesteps = 2 ** n
@@ -284,11 +293,12 @@ def main():
               'and early stopping after {} epoch(s) of no improvement in the validation loss.\n'.format(epochs // 2))
 
         # Train the model
-        print('Commencing the training on iteration {}/{}.'.format(n + 1, EXPONENT))
+        print('Commencing the training on iteration {}/{}.'.format(min(n + 1, EXPONENT), EXPONENT))
         model.fit(x=x_train_t, epochs=epochs, validation_data=x_val_t, callbacks=callbacks)
 
         # Evaluate the model
         loss, acc, dt_stop = model.evaluate(x=x_test_t, batch_size=batch_size, verbose=True)
+
         print('\nModel\'s accuracy: {:.2f}%.\n'.format(acc * 100))
 
         # New model to avoid serialization issued
@@ -319,8 +329,8 @@ def main():
                                                  + '_bs_{}'.format(batch_size)
                                                  + '_lr_{}'.format(lr)
                                                  + '_t_{}'.format(timesteps)
-                                                 + '_dt_{}'.format(dt_stop)
-                                                 + '_l2_{}'.format(timesteps, L2)
+                                                 + '_dt_{:.4f}'.format(dt_stop)
+                                                 + '_l2_{}'.format(L2)
                                                  + '_lhz_{}'.format(LOWER_HZ)
                                                  + '_uhz_{}'.format(UPPER_HZ)
                                                  + '_lz_{}'.format(args['lower_zoom'])
@@ -331,11 +341,11 @@ def main():
                                                  + '_uc_{}'.format(args['upper_contrast'])
                                                  + '_ls_{}'.format(args['lower_saturation'])
                                                  + '_us_{}'.format(args['upper_saturation'])
-                                                 + '_acc_{:.2f}'.format(acc))
+                                                 + '_acc_{:.2f}.h5'.format(acc))
 
         # Save model
-        print('\nSaving the model to:' + str(model_filepath))
-        new_model.save(model_filepath)
+        print('\nSaving model weights to: ' + str(model_filepath))
+        new_model.save_weights(model_filepath)
 
         # We stop optimising dt here
         if dt_stop <= DT_TARGET:
