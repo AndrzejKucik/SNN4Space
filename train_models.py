@@ -20,8 +20,8 @@ from utils import augment, input_filter_map, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.2'
-__date__ = '2021-02-24'
+__version__ = '0.3.3'
+__date__ = '2021-03-04'
 
 # - Argument parser - #
 parser = ArgumentParser()
@@ -119,8 +119,7 @@ SEED = args['seed']
 EPOCHS = args['epochs']
 BATCH_PER_REPLICA = args['batch_size']
 LR = args['learning_rate']
-# -- Model parameters
-DROPOUT = args['dropout']
+# -- Regularization parameters
 KERNEL_L2 = args['kernel_l2']
 BIAS_L1 = args['bias_l1']
 
