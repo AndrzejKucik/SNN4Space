@@ -15,14 +15,14 @@ import tensorflow as tf
 # -- Proprietary modules -- #
 from create_models import create_spiking_vgg16_model
 from dataloaders import load_ucm, load_eurosat
-from utils import add_temporal_dim, augment, DTStop, rescale_resize
+from utils import add_temporal_dim, augment, DTStop, input_filter_map, rescale_resize
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.5'
-__date__ = '2021-03-03'
+__version__ = '0.2.6'
+__date__ = '2021-03-09'
 
 # - Argument parser - #
 parser = ArgumentParser()
@@ -74,7 +74,7 @@ parser.add_argument('-lr',
 parser.add_argument('-t',
                     '--timesteps',
                     type=int,
-                    default=2,
+                    default=32,
                     help='Target number of simulation timesteps (the training starts with 1).')
 parser.add_argument('-dt',
                     '--dt',
@@ -247,7 +247,6 @@ def main():
     model.summary()
 
     # Iterate or not
-    print(args['iterate'])
     start = 0 if args['iterate'] else EXPONENT
     for n in range(start, EXPONENT + 1):
         # The data
@@ -256,6 +255,13 @@ def main():
         x_train_t = x_train.map(add_temporal_dim(timesteps=timesteps), num_parallel_calls=tf.data.experimental.AUTOTUNE)
         x_val_t = x_val.map(add_temporal_dim(timesteps=timesteps), num_parallel_calls=tf.data.experimental.AUTOTUNE)
         x_test_t = x_test.map(add_temporal_dim(timesteps=timesteps), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+        # - Optional gradient-based input (Prewitt and Sobel filters can be applied here before batching, because we
+        # - already have an extra dimension - the temporal one)
+        x_train_t = x_train_t.map(input_filter_map(filter_name=DATASET),
+                                  num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        x_val_t = x_val_t.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        x_test_t = x_test_t.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
         # - Batch the data
         batch_size = 2 ** (EXPONENT - n) * BATCH_SIZE
@@ -297,7 +303,12 @@ def main():
         model.fit(x=x_train_t, epochs=epochs, validation_data=x_val_t, callbacks=callbacks)
 
         # Evaluate the model
-        loss, acc, dt_stop = model.evaluate(x=x_test_t, batch_size=batch_size, verbose=True)
+        results = model.evaluate(x=x_test_t, batch_size=batch_size, verbose=True)
+        try:
+            loss, acc, dt_stop = results
+        except ValueError:
+            loss, acc = results
+            dt_stop = DT_TARGET
 
         print('\nModel\'s accuracy: {:.2f}%.\n'.format(acc * 100))
 
