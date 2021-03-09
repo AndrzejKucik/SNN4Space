@@ -16,8 +16,8 @@ __author__ = 'Andrzej S. Kucik'
 __contributors__ = 'Gabriele Meoni'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.11'
-__date__ = '2021-02-25'
+__version__ = '0.1.12'
+__date__ = '2021-03-09'
 
 # Colour dictionary
 COLOUR_DICTIONARY = {'red': '\033[0;31m',
@@ -223,7 +223,7 @@ def input_filter_map(filter_name: str):
             new_images = new_images ** 2
 
         # Ignore small values
-        new_images = new_images * tf.cast(new_images >= 1 / 255., tf.float32)
+        new_images = new_images * tf.cast(new_images >= 2 / 255., tf.float32)
 
         # Apply filter mas to the original images
         if 'mask' in filter_name.lower():
