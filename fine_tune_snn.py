@@ -20,8 +20,8 @@ from utils import add_temporal_dim, augment, rescale_resize
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
-__date__ = '2021-03-04'
+__version__ = '0.1.1'
+__date__ = '2021-03-09'
 
 # - Argument parser - #
 parser = ArgumentParser()
@@ -53,7 +53,7 @@ parser.add_argument('-e',
 parser.add_argument('-bs',
                     '--batch_size',
                     type=int,
-                    default=32,
+                    default=16,
                     help='Batch size (per replica).')
 parser.add_argument('-lr',
                     '--learning_rate',
