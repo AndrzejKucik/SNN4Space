@@ -1,4 +1,4 @@
-# Nengo Space
+# SNN for Space
 
 ## Table of contents
 
@@ -250,7 +250,7 @@ Property of the European Space Agency. Distributed under MIT licence. See [`LICE
 
 E-mail: [andrzej.kucik@esa.int](mailto:andrzej.kucik@esa.int) [gabriele.meoni@esa.int](mailto:gabriele.meoni@esa.int)
 
-Project Link: <https://github.com/AndrzejKucik/Nengo_Space>
+Project Link: <https://github.com/AndrzejKucik/SNN4Space>
 
 ## Acknowledgements
 
