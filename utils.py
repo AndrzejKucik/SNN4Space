@@ -3,11 +3,9 @@
 """Utility functions."""
 
 # -- Built-in modules -- #
-import os
+from pathlib import Path
 
 # -- Third-party modules -- #
-import matplotlib.pyplot as plt
-import numpy as np
 import tensorflow as tf
 import tensorflow_io as tfio
 
@@ -16,8 +14,8 @@ __author__ = 'Andrzej S. Kucik'
 __contributors__ = 'Gabriele Meoni'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.12'
-__date__ = '2021-03-09'
+__version__ = '0.2.0'
+__date__ = '2021-04-28'
 
 # Colour dictionary
 COLOUR_DICTIONARY = {'red': '\033[0;31m',
@@ -240,216 +238,27 @@ def add_temporal_dim(timesteps: int = 1):
     return lambda image, label: (tf.repeat(tf.expand_dims(image, axis=0), timesteps, axis=0), label)
 
 
-# - Spikes visualization - #
-def plot_spikes(path_to_save: str,
-                examples: tuple,
-                start: int,
-                stop: int,
-                labels: list,
-                simulator,
-                data,
-                probe,
-                network_output,
-                n_steps: int,
-                scale: float = 1.,
-                show=False):
+def model_config_dict(path):
     """
-    Plots the spike activity, given the input.
+    Function returning a dictionary with the model configuration inferred from the file name.
 
     Parameters
     ----------
-    path_to_save : str
-        Path to where to save the file.
-    examples :
-        First element of the tuple are the input images, the second is the output label index
-    start : int
-        Starting index for the examples to display. Must be non-negative
-    stop : int
-        Stopping index for the examples to display. Must have stop > start.
-    labels : list
-        List of the output labels.
-    simulator :
-        NengoDL simulator (https://www.nengo.ai/nengo-dl/reference.html#nengo_dl.Simulator)
-    data :
-        Simulator predictions, given the input.
-    probe :
-        Nengo probe (https://www.nengo.ai/nengo/frontend-api.html#nengo.Probe).
-    network_output :
-        Outputs of Keras output layer converted by Nengo converter.
-    n_steps : int
-        Number of time steps of the simulation
-    scale : float
-        Scale factor for the rate of spikes.
-    show : bool
-        Whether to show the plots.
+    path :
+        Path to the model, either string or pathlib.Path object.
+
+    Returns
+    -------
+    config : dict
+        Dictionary with model configuration.
+
     """
 
-    assert stop > start >= 0
+    # Convert to Path
+    if type(path) == str:
+        path = Path(path)
 
-    # Unpack the data
-    x, y = examples
-    num_examples = stop - start
+    config = path.stem.split(sep='_')
+    config = {config[n]: config[n + 1] for n in range(0, len(config) - 1, 2)}
 
-    # plot the results
-    fig = plt.figure(figsize=(30, 10 * num_examples), tight_layout=True)
-    for i in range(num_examples):
-        # Input image
-        plt.subplot(num_examples, 3, 3 * i + 1)
-        plt.imshow(x[start + i])
-        plt.title(labels[y[start + i]], fontsize=24)
-        plt.axis('off')
-
-        # Sample layer activations
-        plt.subplot(num_examples, 3, 3 * i + 2)
-        scaled_data = data[probe][start + i] * scale
-        scaled_data *= 0.001
-        plt.plot(range(1, len(scaled_data) + 1), scaled_data)
-        rates = np.sum(scaled_data, axis=0) / (n_steps * simulator.dt)
-        plt.ylabel('Number of spikes', fontsize=24)
-        plt.title(f'Sample layer neural activities (mean={rates.mean():.1f} Hz, max={rates.max():.1f} Hz)',
-                  fontsize=24)
-
-        # Output predictions
-        plt.subplot(num_examples, 3, 3 * i + 3)
-        plt.plot(range(1, len(scaled_data) + 1), tf.nn.softmax(data[network_output][start + i]))
-        plt.title('Output predictions', fontsize=24)
-        plt.legend(labels, loc='upper left', fontsize=16)
-        plt.xlabel('Timestep', fontsize=24)
-        plt.ylabel('Probability', fontsize=24)
-
-    # Make the directory for the figures
-    try:
-        os.mkdir('figs')
-    except FileExistsError:
-        pass
-
-    # Save the figure
-    plt.savefig(path_to_save)
-
-    # Show the figure
-    if show:
-        plt.show()
-
-    # And close it
-    plt.close(fig=fig)
-
-
-# - Accuracy visualization - #
-def plot_timestep_accuracy(synapses: list,
-                           scales: list,
-                           timesteps: list,
-                           accuracies,
-                           x_logscale: bool = False,
-                           y_logscale: bool = False,
-                           show: bool = False):
-    """
-    Plots the accuracy against the number of time steps, with respect to different levels of synapse and firing rate.
-
-    Parameters
-    ----------
-    synapses : list
-        List of synapse values. Must be non-empty.
-    scales : list
-        List of firing rate scaling factors. Must be non-empty.
-    timesteps :
-        List of time steps. Must be non-empty.
-    accuracies : ndarray
-        Accuracy level corresponding to respective parameters.
-        Axis 0 corresponds to synapses, axis 1 to firing rate scales, axis 2 to timesteps.
-    x_logscale : bool
-        `True` if the x-axis should be logarithmic.
-    y_logscale : bool
-        `True` if the y-axis should be logarithmic.
-    show : bool
-        Whether to display the plot.
-    """
-
-    # Markers and colours
-    markers = ['v', 'o', '*', 's', 'P']
-    colours = ['m', 'c', 'r', 'g', 'b']
-
-    # Assertions
-    assert 0 < len(synapses) == accuracies.shape[0] <= len(markers)
-    assert 0 < len(scales) == accuracies.shape[1] <= len(colours)
-    assert 0 < len(timesteps) == accuracies.shape[2]
-    assert 0. <= np.min(accuracies) < np.max(accuracies) <= 1.
-
-    # Figure
-    fig = plt.figure(figsize=(3 * len(timesteps), 10), tight_layout=True)
-
-    # Plot data
-    for n in range(len(scales)):
-        colour = colours[n]
-        for m in range(len(synapses)):
-            marker = markers[m]
-            plt.plot(timesteps, accuracies[m, n], colour + marker + ':', markersize=12,
-                     label='Scale: {}, synapse: {}'.format(scales[n], synapses[m]))
-
-    # Format the plot
-    # - Axes labels
-    plt.xlabel('Time steps')
-    plt.ylabel('Accuracy')
-
-    # - Ticks
-    plt.xticks(timesteps, timesteps)
-    y_ticks = np.linspace(np.min(accuracies), np.max(accuracies), 10)
-
-    # - Log scale conditionals
-    if x_logscale:
-        plt.xscale('log')
-        plt.xlabel('Time steps (log scale)')
-    if y_logscale:
-        assert 0. < np.min(accuracies)
-        plt.yscale('log')
-        plt.ylabel('Accuracy (log scale)')
-        y_ticks = np.logspace(np.min(accuracies), np.max(accuracies), 10, base=np.min(accuracies))
-
-    # - Ticks again
-    plt.yticks(y_ticks, ['{:.0f}%'.format(100 * n) for n in y_ticks])
-
-    # - Miscellaneous
-    plt.title('Time-step accuracy for selected synapses and firing rate factors')
-    plt.legend()
-    plt.grid()
-
-    # Make the directory for the plot
-    try:
-        os.mkdir('plots')
-    except FileExistsError:
-        pass
-
-    # Save the figure
-    plt.savefig('./plots/timestep_acc.png')
-
-    # Display the figure
-    if show:
-        plt.show()
-
-    # And close it
-    plt.close(fig=fig)
-
-
-# - Data visualization - #
-def visualize_data(data, class_names: list):
-    """
-    Visualizes input data images.
-    Parameters
-    ----------
-    data :
-        tf.dataset object with images and labels batched.
-    class_names : list
-        List of strings corresponding to class names of the dataset.
-    """
-
-    # Make figure
-    plt.figure(figsize=(10, 10))
-
-    for images, labels in data.take(1):
-        for i in range(9):
-            plt.subplot(3, 3, i + 1)
-            plt.imshow(images[i].numpy())
-            plt.title(class_names[labels[i].numpy()])
-            plt.axis('off')
-
-    # Display
-    plt.show()
+    return config
