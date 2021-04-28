@@ -22,14 +22,15 @@ from utils import add_temporal_dim, COLOUR_DICTIONARY, input_filter_map, rescale
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.0'
-__date__ = '2021-03-09'
+__version__ = '0.3.1'
+__date__ = '2021-04-28'
 
 # Entry names for the CSV file
 COLUMN_NAMES = ['date',  # Date
                 'weights_path', 'dataset', 'batch_size',  # Model  parameters
                 'timesteps', 'dt',  # Timing data
                 'ann_cpu_synop_energy', 'ann_cpu_neuron_energy', 'ann_cpu_total_energy',
+                'arm_cpu_synop_energy', 'arm_cpu_neuron_energy', 'arm_cpu_total_energy',
                 'ann_gpu_synop_energy', 'ann_gpu_neuron_energy', 'ann_gpu_total_energy',
                 'ann_myriad2_synop_energy', 'ann_myriad2_neuron_energy', 'ann_myriad2_total_energy',
                 'ann_loihi_synop_energy', 'ann_loihi_neuron_energy', 'ann_loihi_total_energy',
@@ -427,7 +428,7 @@ def main():
         ]
 
         # -- ANN
-        for device in ['cpu', 'gpu', 'myriad2', 'loihi', 'spinnaker', 'spinnaker2']:
+        for device in ['cpu', 'arm', 'gpu', 'myriad2', 'loihi', 'spinnaker', 'spinnaker2']:
             row += [ann_synop_energy_dict[device], ann_neuron_energy_dict[device], ann_total_energy_dict[device]]
 
         # -- SNN
