@@ -7,7 +7,7 @@
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.0'
+__version__ = '0.3.1'
 __date__ = '2022-01-28'
 
 # -- Built-in modules -- #
@@ -91,7 +91,7 @@ if __name__ == '__main__':
                                         timesteps=timesteps)
 
         # Callbacks
-        callbacks = [tf.keras.callbacks.TensorBoard(log_dir=f"logs/{args['model_name']}/fit", histogram_freq=1),
+        callbacks = [tf.keras.callbacks.TensorBoard(log_dir=f"logs/{args['model_name']}/{n}/fit", histogram_freq=1),
                      tf.keras.callbacks.ReduceLROnPlateau(patience=epochs // 4, verbose=True),
                      tf.keras.callbacks.EarlyStopping(patience=epochs // 2, verbose=True)]
 
@@ -117,6 +117,13 @@ if __name__ == '__main__':
             dt_stop = DT_TARGET
 
         print("Model's accuracy:", colour_str(f'{acc:.2%}', 'green'))
+
+        # Log the evaluation results to Tensorboard
+        summary_writer = tf.summary.create_file_writer(f"logs/{args['model_name']}/{n}/evaluate")
+        with summary_writer.as_default():
+            tf.summary.scalar('Test loss', loss, step=args['epochs'])
+            tf.summary.scalar('Test accuracy', acc, step=args['epochs'])
+            tf.summary.scalar('Final dt', dt_stop, step=args['epochs'])
 
         # New model to avoid serialization issued
         with strategy.scope():
