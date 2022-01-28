@@ -7,8 +7,8 @@
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.0'
-__date__ = '2022-01-27'
+__version__ = '0.2.1'
+__date__ = '2022-01-28'
 
 # -- Third-party modules -- #
 import tensorflow as tf
@@ -266,7 +266,7 @@ def load_data(dataset: str = 'eurosat',
     val = val.prefetch(tf.data.experimental.AUTOTUNE)
     test = test.prefetch(tf.data.experimental.AUTOTUNE)
 
-    return train, val, test, info.features['label'].names
+    return train, val, test, info
 
 
 def rescale_resize_image(image, image_size: tuple):
