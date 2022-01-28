@@ -7,7 +7,7 @@
 __author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.2'
+__version__ = '0.3.3'
 __date__ = '2022-01-28'
 
 # -- Built-in modules -- #
@@ -365,15 +365,16 @@ if __name__ == '__main__':
     )
 
     # Write the results to a CSV file
-    estimates = 'estimates.csv'
+    os.makedirs('energy_estimates', exist_ok=True)
+    estimates_path = f"energy_estimates/{args['model_name']}.csv"
     # - Create the file if it does not exist
-    if not os.path.isfile(estimates):
-        with open(estimates, mode='w') as csv_file:
+    if not os.path.isfile(estimates_path):
+        with open(estimates_path, mode='w') as csv_file:
             csv_writer = csv.writer(csv_file, delimiter=',')
             csv_writer.writerow(COLUMN_NAMES)
 
     # - Append the results
-    with open(estimates, mode='a', newline='') as csv_file:
+    with open(estimates_path, mode='a', newline='') as csv_file:
         csv_writer = csv.writer(csv_file, delimiter=',')
         row = [
             # Date
