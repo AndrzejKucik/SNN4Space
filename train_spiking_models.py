@@ -7,7 +7,7 @@
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.1'
+__version__ = '0.3.2'
 __date__ = '2022-01-28'
 
 # -- Built-in modules -- #
@@ -125,7 +125,7 @@ if __name__ == '__main__':
             tf.summary.scalar('Test accuracy', acc, step=args['epochs'])
             tf.summary.scalar('Final dt', dt_stop, step=args['epochs'])
 
-        # New model to avoid serialization issued
+        # New model to avoid serialization issues
         with strategy.scope():
             new_model = create_spiking_vgg16_model(model_path=args['model_path'],
                                                    input_shape=args['input_shape'],
@@ -146,7 +146,7 @@ if __name__ == '__main__':
                               metrics=[tf.metrics.SparseCategoricalAccuracy()])
 
         # Save model filepath
-        new_model.save_weights(args['weights_path'])
+        new_model.save(f"{args['weights_path']}/{n}.h5")
 
         # We stop optimising dt here
         if dt_stop <= DT_TARGET:
