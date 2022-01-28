@@ -24,14 +24,14 @@ the energy consumption on selected hardware platforms.
 
 ## Requirements
 
-This project uses [Python](https://www.python.org/) 3.6, and requires the following third-party libraries:
+This project uses [Python](https://www.python.org/) 3.10, and requires the following third-party libraries:
 
-* [KerasSpiking](https://www.nengo.ai/keras-spiking/) 0.2.0
+* [KerasSpiking](https://www.nengo.ai/keras-spiking/) 0.3.0
 * [NumPy](https://numpy.org/) 1.19.5
-* [Matplotlib](https://matplotlib.org/) 3.3.4
-* [TensorFlow](https://www.tensorflow.org/) 2.4.1
-* [TensorFlow Datasets](https://www.tensorflow.org/datasets) 4.2.0
-* [Tensorflow I/O](https://www.tensorflow.org/io) 0.17.0
+* [TensorBoard](https://www.tensorflow.org/tensorboard/) 2.8.0
+* [TensorFlow](https://www.tensorflow.org/) 2.6.0
+* [TensorFlow Datasets](https://www.tensorflow.org/datasets) 4.5.0
+* [Tensorflow I/O](https://www.tensorflow.org/io) 0.21.0
 
 No issues related to using different versions of the other libraries was encountered. Nonetheless, recommend 
 creating a separate environment for this project and installing the versions of the packages specified above.
@@ -41,8 +41,7 @@ creating a separate environment for this project and installing the versions of 
 Alternatively, all the required libraries can be installed using `pip`:
 
 ```shell
-pip install numpy==1.19.5 matplotlib==3.3.4 tensorflow==2.4.1 tensorflow-io==0.17.0 tensorflow-datasets==4.2.0
-keras-spiking==0.2.0
+pip install numpy==1.19.5 tensorflow==2.6.0 tensorflow-io==0.21.0 tensorflow-datasets==4.5.0 keras-spiking==0.3.0
 ```
 
 In case there are issues with running the [TensorFlow](https://www.tensorflow.org/) files on a GPU-equipped 
@@ -98,9 +97,9 @@ convolutional kernels and biases, respectively.
 To train the network run:
 
 ```shell
-python train_models.py [-ds dataset] [-s seed] [-e epochs] [-bs batch_size] [-drpt dropout] [-kl2 kernel_l2] [-bl1 
-bias_l1] [-lz lower_zoom] [-uz upper_zoom] [-mbd max_brightness_delta] [-mhd max_hue_delta] [-lc lower_contrast] 
-[-uc upper_contrast] [-ls lower_saturation] [-us upper_saturation]
+python train_models.py [-ds dataset] [-s seed] [-e epochs] [-bs batch_size] [-drpt dropout] [-kl2 kernel_regularizer]
+ [-bl1 bias_regularizer] [-lz lower_zoom] [-uz upper_zoom] [-mbd max_brightness_delta] [-mhd max_hue_delta] [-lc 
+ lower_contrast] [-uc upper_contrast] [-ls lower_saturation] [-us upper_saturation]
 ```
 
 where the optional arguments are:
@@ -130,19 +129,6 @@ where the optional arguments are:
 The default values of these parameters (apart from the batch size) are the ones that empirically gave us the best 
 test accuracy performance (91.43%) on [UC Merced](http://weegee.vision.ucmerced.edu/datasets/landuse.html) and (95.
 07%) on [EuroSat](https://github.com/phelber/EuroSAT).
-
-The trained model is saved to
-
-```
-./models/vgg16/{dataset}/s_{seed}_e_{epochs}_bs_{batch_size}_lr_
-{learning_rate}_kl2_{kernel_l2}_bl1_{bias_l1}_lz_
-{lower_zoom}_uz_{upper_zoom}_mbd_{max_brightness_delta}_mhd_{max_hue_delta}
-_lc_{lower_contrast}_uc_{upper_contrast}_ls_{lower_saturation}_us_
-{upper_saturation}_acc_{accuracy}.h5
-```
-
-where each `{name}`is replaced by the corresponding value of `name` from the above list and `accuracy` represents 
-the accuracy of the model on the test set.
 
 **_Note that the obtained test set accuracy might be different each time (sometimes even failing to converge), even 
 if identical parameters are used, because the global random seed does not seem to affect the shuffling processes or 
@@ -191,17 +177,6 @@ a [low-pass filter](https://www.nengo.ai/keras-spiking/reference.html?highlight=
 
 ![ANN to SNN conversion](./ann_to_snn.png)
 
-The trained model's weights are saved to
-```
-./models/spiking_wgg16/{dataset}/s_{seed}_e_{epochs}_bs_{batch_size}_ls_
-{learning_rate}_t_{timesteps}_dt_{dt}_l2_{l2}_lhz_{lower_hz}_uhz_{upper_hz}_lz_
-{lower_zoom}_uz_{upper_zoom}_mbd_{max_brightness_delta}_mhd_{max_hue_delta}_lc_
-{lower_contrast}_uc_{upper_contrast}_ls_{lower_saturation}_us_
-{upper_saturation}_acc_{accuracy}.h5
-```
-
-![Sample spikes](./sample_spikes.png)
-
 The trained spiking model can be fine-tuned for a specific number of time steps and *fixed* temporal dimension by 
 running:
 
@@ -215,6 +190,8 @@ python fine_tune_snn.py -wp weights_path -ds dataset [-s seed] [-e epochs] \
 
 where `weights_path` is a path to a valid `.h5` file with pre-trained weights (as output by `train_spiking_models. 
 py`), and the rest of the parameters are as above.
+
+![Sample spikes](./sample_spikes.png)
 
 ### Energy consumption estimation
 
