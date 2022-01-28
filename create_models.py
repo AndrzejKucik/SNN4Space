@@ -1,18 +1,19 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.10
+# -*- coding: utf-8 -*-
 
 """Creates VGG16-based model with (optional) average pooling, and regularizers."""
-
-# -- Third-party modules -- #
-import keras_spiking
-import numpy as np
-import tensorflow as tf
 
 # -- File info -- #
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.2'
-__date__ = '2021-04-28'
+__version__ = '0.2.3'
+__date__ = '2022-01-28'
+
+# -- Third-party modules -- #
+import keras_spiking
+import numpy as np
+import tensorflow as tf
 
 
 def remove_pooling_kernel(kernel):
@@ -32,7 +33,7 @@ def remove_pooling_kernel(kernel):
         Numpy array with shape (4, 4, input_channels, output_channels).
     """
 
-    assert kernel.shape[0:2] == (3, 3)
+    assert kernel.shape[:2] == (3, 3)
 
     new_kernel = np.zeros(shape=(4, 4, kernel.shape[2], kernel.shape[3]))
 
@@ -56,7 +57,7 @@ def create_vgg16_model(input_shape: tuple = (224, 224, 3),
     Parameters
     ----------
     input_shape : tuple
-        Tuple of integers (height, width, channels) specifying the shape of the input images.
+        Shape of input images: (height, width, channels).
     kernel_l2 : float
         Weight penalty for convolutional kernels' L2 regularizer. Only applied if positive.
     bias_l1 : float
@@ -87,41 +88,30 @@ def create_vgg16_model(input_shape: tuple = (224, 224, 3),
         # - Convolutional layers
         if isinstance(layer, tf.keras.layers.Conv2D):
             # -- Add regularizers, if needed
-            kernel_regularizer = tf.keras.regularizers.l2(kernel_l2) if kernel_l2 > 0 else None
-            bias_regularizer = tf.keras.regularizers.l1(bias_l1) if bias_l1 > 0 else None
+            config['activation'] = tf.nn.relu
+            config['kernel_regularizer'] = tf.keras.regularizers.l2(kernel_l2) if kernel_l2 > 0 else None
+            config['bias_regularizer'] = tf.keras.regularizers.l1(bias_l1) if bias_l1 > 0 else None
+            config['input_shape'] = layer.input.shape[1:]
 
             # -- Get weights
             kernel, bias = layer.get_weights()
 
             # -- Remove pooling, if needed
-            if remove_pooling:
-                if (isinstance(vgg16.layers[i + 1], tf.keras.layers.AveragePooling2D)
-                        or isinstance(vgg16.layers[i + 1], tf.keras.layers.MaxPooling2D)):
-                    config['kernel_size'] = (4, 4)
-                    config['strides'] = (2, 2)
-                    kernel = remove_pooling_kernel(kernel)
+            if remove_pooling and isinstance(vgg16.layers[i + 1],
+                                             (tf.keras.layers.AveragePooling2D, tf.keras.layers.MaxPooling2D)):
+                config['kernel_size'] = (4, 4)
+                config['strides'] = (2, 2)
+                kernel = remove_pooling_kernel(kernel)
 
             # -- Add the layer to the model
-            model.add(tf.keras.layers.Conv2D(filters=config['filters'],
-                                             kernel_size=config['kernel_size'],
-                                             strides=config['strides'],
-                                             padding=config['padding'],
-                                             kernel_regularizer=kernel_regularizer,
-                                             bias_regularizer=bias_regularizer,
-                                             activation=tf.nn.relu,
-                                             name=config['name'],
-                                             input_shape=layer.input.shape[1:]))
+            model.add(tf.keras.layers.Conv2D(**config))
 
             # -- Load weights
             model.layers[-1].set_weights([kernel, bias])
 
         # - If removing pooling layers is not necessary, then we replace max with average pooling
         if not remove_pooling and isinstance(layer, tf.keras.layers.MaxPooling2D):
-            model.add(tf.keras.layers.AveragePooling2D(pool_size=config['pool_size'],
-                                                       strides=config['strides'],
-                                                       padding=config['padding'],
-                                                       name=config['name'],
-                                                       input_shape=layer.input_shape))
+            model.add(tf.keras.layers.AveragePooling2D(**config))
 
     # Conclude VGG layers with a global average pooling layer
     model.add(tf.keras.layers.GlobalAveragePooling2D(name='glob_pool'))
@@ -135,11 +125,11 @@ def create_vgg16_model(input_shape: tuple = (224, 224, 3),
 # noinspection PyTypeChecker
 def create_spiking_vgg16_model(model_path='',
                                input_shape: tuple = (224, 224, 3),
-                               dt=0.001,
+                               dt=.001,
                                l2: float = 1e-4,
                                lower_hz: float = 10.,
                                upper_hz: float = 20.,
-                               tau: float = 0.1,
+                               tau: float = .1,
                                num_classes: int = 1000,
                                spiking_aware_training: bool = True):
     """
@@ -205,24 +195,19 @@ def create_spiking_vgg16_model(model_path='',
 
         # - Convolutional layers
         if isinstance(layer, tf.keras.layers.Conv2D):
+            config['input_shape'] = layer.input.shape[1:]
+
             # -- Get weights
             kernel, bias = layer.get_weights()
 
             # -- Remove pooling layers, if necessary
-            if (isinstance(model.layers[i + 1], tf.keras.layers.AveragePooling2D)
-                    or isinstance(model.layers[i + 1], tf.keras.layers.MaxPooling2D)):
+            if isinstance(model.layers[i + 1], (tf.keras.layers.AveragePooling2D, tf.keras.layers.MaxPooling2D)):
                 config['kernel_size'] = (4, 4)
                 config['strides'] = (2, 2)
                 kernel = remove_pooling_kernel(kernel)
 
             # -- Add the layer to the model
-            new_model.add(tf.keras.layers.Conv2D(filters=config['filters'],
-                                                 kernel_size=config['kernel_size'],
-                                                 strides=config['strides'],
-                                                 padding=config['padding'],
-                                                 activation=tf.nn.relu,
-                                                 name=config['name'],
-                                                 input_shape=layer.input.shape[1:]))
+            new_model.add(tf.keras.layers.Conv2D(**config))
 
             # -- Load weights
             new_model.layers[-1].set_weights([kernel, bias])
