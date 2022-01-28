@@ -1,11 +1,19 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.10
+# -*- coding: utf-8 -*-
 
-"""Estimators of flops, MACs, ACs, and energy consumption of ANN and SNN models during the inference.."""
+"""Estimators of flops, MACs, ACs, and energy consumption of ANN and SNN models during the inference."""
+
+# -- File info -- #
+__author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
+__copyright__ = 'European Space Agency'
+__contact__ = 'andrzej.kucik@esa.int'
+__version__ = '0.3.2'
+__date__ = '2022-01-28'
 
 # -- Built-in modules -- #
 import csv
 import os
-from argparse import ArgumentParser
+import sys
 from datetime import datetime
 
 # -- Third-party modules -- #
@@ -14,16 +22,10 @@ import numpy as np
 import tensorflow as tf
 
 # -- Proprietary modules -- #
+from argument_parser import parse_arguments
 from create_models import create_spiking_vgg16_model
-from dataloaders import load_eurosat, load_ucm
-from utils import add_temporal_dim, COLOUR_DICTIONARY, input_filter_map, rescale_resize
-
-# -- File info -- #
-__author__ = ['Andrzej S. Kucik', 'Gabriele Meoni']
-__copyright__ = 'European Space Agency'
-__contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.1'
-__date__ = '2021-04-28'
+from dataloaders import load_data
+from utils import colour_str
 
 # Entry names for the CSV file
 COLUMN_NAMES = ['date',  # Date
@@ -61,66 +63,6 @@ DEVICES = {
     'spinnaker': dict(spiking=True, energy_per_synop=13.3e-9, energy_per_neuron=26e-9),
     'spinnaker2': dict(spiking=True, energy_per_synop=450e-12, energy_per_neuron=2.19e-9),
 }
-
-# - Argument parser - #
-parser = ArgumentParser()
-# -- Model parameters
-parser.add_argument('-wp',
-                    '--weights_path',
-                    type=str,
-                    default='',
-                    help='Path to the model weights.')
-# -- Dataset
-parser.add_argument('-ds',
-                    '--dataset',
-                    type=str,
-                    default='eurosat',
-                    help='Dataset. Either `eurosat` or `ucm`. One can also add `prewitt`, `sobel`, `mask` or `sq`.')
-# -- Simulation parameters
-parser.add_argument('-bs',
-                    '--batch_size',
-                    type=int,
-                    default=1,
-                    help='Batch size for the SNN testing. Must be a positive integer')
-parser.add_argument('-t',
-                    '--timesteps',
-                    type=int,
-                    default=1,
-                    help='The length of the simulation. Must be a positive integer')
-parser.add_argument('-dt',
-                    '--dt',
-                    type=float,
-                    default=.001,
-                    help='Temporal resolution of the simulation.')
-# -- Verbosity
-parser.add_argument('-v',
-                    '--verbose',
-                    action='store_true',
-                    default=False,
-                    help='If True, the energy contributions for all the layers is shown.')
-
-# -- Parse arguments
-args = vars(parser.parse_args())
-WEIGHTS_PATH = args['weights_path']
-DATASET = args['dataset'].lower()
-BATCH_SIZE = args['batch_size']
-TIMESTEPS = args['timesteps']
-DT = args['dt']
-VERBOSE = args['verbose']
-
-# Fix the dataset parameters
-if 'eurosat' in DATASET:
-    INPUT_SHAPE = (64, 64, 3)
-    NUM_CLASSES = 10
-    BUFFER_SIZE = 21600
-    print('Using', COLOUR_DICTIONARY['red'], 'EuroSAT', COLOUR_DICTIONARY['black'], 'dataset...', )
-elif 'ucm' in DATASET:
-    INPUT_SHAPE = (224, 224, 3)
-    NUM_CLASSES = 21
-    BUFFER_SIZE = 1680
-    print('Using', COLOUR_DICTIONARY['red'], 'UC Merced', COLOUR_DICTIONARY['black'], 'dataset...', )
-else:
-    exit('Invalid dataset!')
 
 
 def compute_connections(layer):
@@ -203,11 +145,11 @@ def extract_model_info(model):
     Returns
     -------
     number_of_connection_per_neuron_list : list
-        List of the number of input connection per neuron for the different layers.
+        Number of input connection per neuron for the different layers.
     number_of_neurons_list : list
-        List of the number of neurons for the different layers.
+        Number of neurons for the different layers.
     activations_to_track_index_list : list
-        List containing the indices of the layers for which activations shall be extracted.
+        Indices of the layers for which activations shall be extracted.
     """
 
     # Placeholders
@@ -240,8 +182,9 @@ def energy_estimation(model,
                       x_test=None,
                       spiking_model: bool = True,
                       device_list: list = None,
-                      n_timesteps: int = TIMESTEPS,
-                      dt: float = DT,
+                      batch_size: int = 1,
+                      n_timesteps: int = 32,
+                      dt: float = .001,
                       verbose: bool = False):
     """
     Estimate the energy spent for synaptic operations and neurons update required for an inference for an Artificial or
@@ -255,6 +198,8 @@ def energy_estimation(model,
 
     Parameters
     ----------
+    batch_size : int
+        Batch size
     model : tf.keras.Model
         Keras model object
     x_test: tf.raw_ops.ParallelMapDataset (default=None)
@@ -310,12 +255,12 @@ def energy_estimation(model,
         synop_energy = tf.add_n([number_of_connection_per_neuron_list[n] * number_of_neurons_list[n]
                                  * mean_activations[n] for n in range(len(mean_activations))])
 
-        # -- Define a new model to calculate the the base synaptic energy, given the input
+        # -- Define a new model to calculate the base synaptic energy, given the input
         new_model = tf.keras.Model(model.input, synop_energy)
         new_model.compile()
 
         # -- Overwrite synop_energy with new_model predictions
-        synop_energy = new_model.predict(x_test, batch_size=BATCH_SIZE, verbose=VERBOSE)
+        synop_energy = new_model.predict(x_test, batch_size=batch_size, verbose=verbose)
         # -- Get the mean across the training batches
         synop_energy = np.mean(synop_energy)
         # -- Then it is multiplied by the number of timesteps and the temporal resolution
@@ -335,8 +280,8 @@ def energy_estimation(model,
     for device in device_list:
         energy_dict = DEVICES[device]
         if spiking_model and not energy_dict['spiking']:
-            print(COLOUR_DICTIONARY['red'], 'Error!', COLOUR_DICTIONARY['purple'],
-                  'Impossible to infer spiking models on standard hardware!', COLOUR_DICTIONARY['black'])
+            print(colour_str('Error!', 'red'),
+                  colour_str('Impossible to infer spiking models on standard hardware!', 'purple'))
             break
 
         # -- Multiply the energy units by the energy consumption specific for a device
@@ -346,85 +291,97 @@ def energy_estimation(model,
 
         # -- Print out the results if necessary
         if verbose:
-            print('Estimating energy on ', COLOUR_DICTIONARY['red'], device, COLOUR_DICTIONARY['black'])
-            print(COLOUR_DICTIONARY['red'], 'Global model energy', COLOUR_DICTIONARY['black'])
-            print(COLOUR_DICTIONARY['orange'], '\t--------- Total energy ---------', COLOUR_DICTIONARY['black'])
+            print('Estimating energy on ', colour_str(device, 'cyan'))
+            print(colour_str('Global model energy', 'red'))
+            print(colour_str('\t--------- Total energy ---------', 'orange'))
             print('\tSynop layer energy: ', synop_energy_dict[device], 'J/inference')
             print('\tNeuron layer energy: ', neuron_energy_dict[device], 'J/inference')
-            print('\tTotal layer energy:', COLOUR_DICTIONARY['green'], total_energy_dict[device],
-                  COLOUR_DICTIONARY['black'], 'J/inference\n\n')
+            print('\tTotal layer energy:', colour_str(total_energy_dict[device], 'green'), 'J/inference\n\n')
 
     return synop_energy_dict, neuron_energy_dict, total_energy_dict
 
 
-def main():
-    """The main function."""
+if __name__ == '__main__':
+    # Get the arguments
+    args = parse_arguments(arguments=sys.argv[1:])
+
+    # Set the seed for reproducibility
+    tf.random.set_seed(seed=args['seed'])
+
+    # Strategy parameters (for multiple GPU training) #
+    strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
+    num_devices = strategy.num_replicas_in_sync
+    print(f"Number of devices: {colour_str(num_devices, 'purple')}")
+
+    # Global batch size
+    batch_size = args['batch_size'] * num_devices
 
     # Model
     # - Create a model, initializing it with VGG16 weights
     model = create_spiking_vgg16_model(model_path='',
-                                       input_shape=INPUT_SHAPE,
-                                       dt=DT,
-                                       num_classes=NUM_CLASSES)
+                                       input_shape=args['input_shape'],
+                                       dt=args['dt'],
+                                       l2=args['l2'],
+                                       lower_hz=args['lower_hz'],
+                                       upper_hz=args['upper_hz'],
+                                       tau=args['tau'],
+                                       num_classes=args['num_classes'])
 
     # - Load weights trained in a spiking aware training
     try:
-        model.load_weights(filepath=WEIGHTS_PATH)
+        model.load_weights(filepath=args['weights_path'])
     except tf.errors.NotFoundError:
-        print(COLOUR_DICTIONARY['red'], 'Failed to load the weights!',
-              COLOUR_DICTIONARY['purple'], 'Proceeding with VGG16 weights.',
-              COLOUR_DICTIONARY['black'])
+        print(colour_str('Failed to load the weights! Proceeding with VGG16 weights.', 'red'))
 
     # - Print out model's summary
-    if VERBOSE:
+    if args['verbose']:
         model.summary()
 
     # - Energy usage
     # -- ANN
     ann_synop_energy_dict, ann_neuron_energy_dict, ann_total_energy_dict = energy_estimation(model,
                                                                                              spiking_model=False,
-                                                                                             verbose=VERBOSE)
+                                                                                             verbose=args['verbose'])
 
     # -- SNN
     # --- Load data
-    x_test = load_eurosat()[2] if 'eurosat' in DATASET else load_ucm()[2]
-    x_test = x_test.map(rescale_resize(image_size=INPUT_SHAPE[:-1]), num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    # ---- Add the temporal dimension
-    x_test = x_test.map(add_temporal_dim(timesteps=TIMESTEPS), num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    x_test = x_test.map(input_filter_map(filter_name=DATASET), num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    _, _, test, info = load_data(dataset=args['dataset'],
+                                 input_size=args['input_shape'][:-1],
+                                 batch_size=batch_size,
+                                 timesteps=args['timesteps'])
+
     # ---- Discard the labels to conserve the energy and have no inconsistencies in the synaptic energy estimation model
-    x_test = x_test.map(lambda x, y: x, num_parallel_calls=tf.data.experimental.AUTOTUNE)
-    x_test = x_test.batch(batch_size=BATCH_SIZE)
-    x_test = x_test.prefetch(tf.data.experimental.AUTOTUNE)
+    xtest = test.map(lambda x, y: x, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     # --- Get the energy usage
-    snn_synop_energy_dict, snn_neuron_energy_dict, snn_total_energy_dict = energy_estimation(model,
-                                                                                             x_test=x_test,
-                                                                                             spiking_model=True,
-                                                                                             device_list=['loihi',
-                                                                                                          'spinnaker',
-                                                                                                          'spinnaker2'],
-                                                                                             n_timesteps=TIMESTEPS,
-                                                                                             dt=DT,
-                                                                                             verbose=VERBOSE)
+    snn_synop_energy_dict, snn_neuron_energy_dict, snn_total_energy_dict = energy_estimation(
+        model,
+        x_test=test,
+        spiking_model=True,
+        device_list=['loihi', 'spinnaker', 'spinnaker2'],
+        n_timesteps=args['timesteps'],
+        dt=args['dr'],
+        verbose=args['verbose']
+    )
 
     # Write the results to a CSV file
+    estimates = 'estimates.csv'
     # - Create the file if it does not exist
-    if not os.path.isfile('estimates.csv'):
-        with open('estimates.csv', mode='w') as csv_file:
+    if not os.path.isfile(estimates):
+        with open(estimates, mode='w') as csv_file:
             csv_writer = csv.writer(csv_file, delimiter=',')
             csv_writer.writerow(COLUMN_NAMES)
 
     # - Append the results
-    with open('estimates.csv', mode='a', newline='') as csv_file:
+    with open(estimates, mode='a', newline='') as csv_file:
         csv_writer = csv.writer(csv_file, delimiter=',')
         row = [
             # Date
             datetime.now().strftime('%d/%m/%Y %H:%M:%S'),
             # Model parameters
-            WEIGHTS_PATH, DATASET, BATCH_SIZE,
+            args['weights_path'], args['dataset'], batch_size,
             # Timing data
-            TIMESTEPS, DT
+            args['timesteps'], args['dt']
         ]
 
         # -- ANN
@@ -436,8 +393,3 @@ def main():
             row += [snn_synop_energy_dict[device], snn_neuron_energy_dict[device], snn_total_energy_dict[device]]
 
         csv_writer.writerow(row)
-
-
-# Main function
-if __name__ == '__main__':
-    main()
