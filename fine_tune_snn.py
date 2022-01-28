@@ -7,7 +7,7 @@
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 __date__ = '2022-01-28'
 
 # -- Built-in modules -- #
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     # - Model path
     with strategy.scope():
         # - Create a model
-        model = create_spiking_vgg16_model(model_path='',
+        model = create_spiking_vgg16_model(model_path=args['model_path'],
                                            input_shape=args['input_shape'],
                                            dt=args['dt'],
                                            l2=args['l2'],
@@ -92,4 +92,4 @@ if __name__ == '__main__':
         tf.summary.scalar('Test accuracy', acc, step=args['epochs'])
 
     # Save weights
-    model.save_weights(f"models/{args['model_name']}.h5")
+    model.save(f"{args['weights_path']}/fine_tuned.h5")
