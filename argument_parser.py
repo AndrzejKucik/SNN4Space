@@ -198,15 +198,17 @@ def parse_arguments(arguments: list):
     arguments['num_classes'] = 10 if 'eurosat' in arguments['dataset'] else 21  # ucm
 
     # Model path
-    if arguments['model_path'] is None:
+    if arguments['model_path'] is None:  # For ANN training
         arguments['model_name'] = f"{arguments['dataset']}/{arguments['time']}"
         arguments['model_path'] = f"models/{arguments['model_name']}"
         makedirs(arguments['model_path'], exist_ok=True)
-    else:
-        arguments['model_name'] = f"{arguments['dataset']}_spiking/{arguments['time']}"
-        if arguments['weights_path'] is None:
+    else:  # For SNN training
+        if arguments['weights_path'] is None:  # - First time training
+            arguments['model_name'] = f"{arguments['dataset']}_spiking/{arguments['time']}"
             arguments['weights_path'] = f"models/{arguments['model_name']}.h5"
             makedirs(arguments['weights_path'], exist_ok=True)
+        else:  # - Fine-tuning
+            arguments['model_name'] = f"{arguments['dataset']}_spiking_fine_tuned/{arguments['time']}"
 
     # Log the arguments to Tensorboard
     summary_writer = tf.summary.create_file_writer(f"logs/{arguments['model_name']}/arguments")
