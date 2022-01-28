@@ -7,7 +7,7 @@
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.2.3'
+__version__ = '0.2.4'
 __date__ = '2022-01-28'
 
 # -- Third-party modules -- #
@@ -167,12 +167,10 @@ def create_spiking_vgg16_model(model_path='',
     try:
         # Load a pretrained model from the specified path
         model = tf.keras.models.load_model(model_path)
-        dense_load_weights = True
         print('Loaded a pretrained model.')
     except OSError:
         # Load the VGG16 model (this may take a moment for the first time)
-        model = tf.keras.applications.VGG16(include_top=False, weights='imagenet', input_shape=input_shape)
-        dense_load_weights = False
+        model = create_vgg16_model(input_shape=input_shape, num_classes=num_classes, remove_pooling=True)
         print('Loaded the VGG16 model pretrained on ImageNet.')
 
     # The last layer before the dense classifier and the global pooling layer will not output sequences, so we need to
@@ -183,11 +181,10 @@ def create_spiking_vgg16_model(model_path='',
     if isinstance(model.layers[last_layers_idx], tf.keras.layers.GlobalAveragePooling2D):
         last_layers_idx -= 1
 
-    # Define a new model
-    new_model = tf.keras.Sequential()
-
-    # Add the temporal dimension
-    new_model.add(tf.keras.layers.Reshape((-1,) + input_shape, input_shape=(None,) + input_shape, name='reshape'))
+    # Define a new model with the temporal dimension
+    new_model = tf.keras.Sequential([tf.keras.layers.Reshape((-1,) + input_shape,
+                                                             input_shape=(None,) + input_shape,
+                                                             name='reshape')])
 
     # Loop over VGG16 layers
     for i, layer in enumerate(model.layers[:last_layers_idx + 1]):
@@ -222,7 +219,7 @@ def create_spiking_vgg16_model(model_path='',
                                                           name='relu_' + str(i)))
 
             # -- Low-pass filter. The last filter does not return sequences
-            new_model.add(keras_spiking.Lowpass(tau=tau,
+            new_model.add(keras_spiking.Lowpass(tau_initializer=tau,
                                                 dt=dt,
                                                 apply_during_training=True,
                                                 return_sequences=(i != last_layers_idx - 1),
@@ -234,17 +231,16 @@ def create_spiking_vgg16_model(model_path='',
     # Output layer
     new_model.add(tf.keras.layers.Dense(num_classes, name='dense'))
 
-    # - Load the final weights, if not using VGG16
-    if dense_load_weights:
-        weights = model.layers[-1].get_weights()
-        # - No bias in the loaded model layer
-        if len(weights) == 1:
-            kernel = weights[0]
-            bias = new_model.layers[-1].get_weights()[-1]
-        else:
-            kernel, bias = weights
+    # - Load the final weights
+    weights = model.layers[-1].get_weights()
+    # - No bias in the loaded model layer
+    if len(weights) == 1:
+        kernel = weights[0]
+        bias = new_model.layers[-1].get_weights()[-1]
+    else:
+        kernel, bias = weights
 
-        # - Load the new weights
-        new_model.layers[-1].set_weights([kernel, bias])
+    # - Load the new weights
+    new_model.layers[-1].set_weights([kernel, bias])
 
     return new_model
