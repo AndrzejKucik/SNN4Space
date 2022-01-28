@@ -206,9 +206,10 @@ def parse_arguments(arguments: list):
         arguments['model_name'] = f"{arguments['dataset']}_spiking/{arguments['time']}"
         if arguments['weights_path'] is None:
             arguments['weights_path'] = f"models/{arguments['model_name']}.h5"
+            makedirs(arguments['weights_path'], exist_ok=True)
 
     # Log the arguments to Tensorboard
-    summary_writer = tf.summary.create_file_writer(f"logs/{arguments['model_name']}/args")
+    summary_writer = tf.summary.create_file_writer(f"logs/{arguments['model_name']}/arguments")
     with summary_writer.as_default():
         for key, value in arguments.items():
             if isinstance(value, str):
