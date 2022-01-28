@@ -7,7 +7,7 @@
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 __date__ = '2022-01-28'
 
 # -- Built-in modules -- #
@@ -59,7 +59,6 @@ def parse_arguments(arguments: list):
     parser.add_argument('-wp',
                         '--weights_path',
                         type=str,
-                        default='',
                         help='Path to weights of a pretrained SNN.')
     # -- Training
     parser.add_argument('-e',
@@ -205,7 +204,7 @@ def parse_arguments(arguments: list):
     else:  # For SNN training
         if arguments['weights_path'] is None:  # - First time training
             arguments['model_name'] = f"{arguments['dataset']}_spiking/{arguments['time']}"
-            arguments['weights_path'] = f"models/{arguments['model_name']}.h5"
+            arguments['weights_path'] = f"models/{arguments['model_name']}"
             makedirs(arguments['weights_path'], exist_ok=True)
         else:  # - Fine-tuning
             arguments['model_name'] = f"{arguments['dataset']}_spiking_fine_tuned/{arguments['time']}"
