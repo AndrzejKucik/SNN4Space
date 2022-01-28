@@ -1,6 +1,14 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/env python3.10
+# -*- coding: utf-8 -*-
 
 """Auxiliary functions used to create the plots used in the accompanying article and the GitHub repository."""
+
+# -- File info -- #
+__author__ = 'Andrzej S. Kucik'
+__copyright__ = 'European Space Agency'
+__contact__ = 'andrzej.kucik@esa.int'
+__version__ = '0.1.1'
+__date__ = '2022-01-27'
 
 # -- Built-in modules -- #
 import csv
@@ -14,14 +22,7 @@ import tensorflow as tf
 import tensorflow_io as tfio
 
 # -- Proprietary modules -- #
-from dataloaders import load_eurosat
-
-# -- File info -- #
-__author__ = 'Andrzej S. Kucik'
-__copyright__ = 'European Space Agency'
-__contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.1.0'
-__date__ = '2021-04-28'
+from dataloaders import load_data
 
 
 def plot_sample_eurosat_images():
@@ -30,14 +31,14 @@ def plot_sample_eurosat_images():
     info = ['Annual\nCrop', 'Forest\n', 'Herbaceous\nVegetation', 'Highway\n', 'Industrial\n',
             'Pasture\n', 'Permanent\nCrop', 'Residential\n', 'River\n', 'Sea\nLake']
     # Load data
-    x_test, _ = load_eurosat()[2:]
+    x_test, _ = load_data(dataset='eurosat')[2:]
 
     # Extract images
     used_labels = []
     examples = []
     for (image, label) in x_test.take(100):
         if label in used_labels:
-            pass
+            continue
         else:
             examples.append(image)
             used_labels.append(label)
@@ -142,7 +143,7 @@ def plot_energy(estimates_path: str):
              [float(configs[0]['ann_loihi_total_energy']), float(configs[0]['ann_loihi_total_energy'])],
              'k:')
 
-    # Plot best ANN performance
+    # Plot the best ANN performance
     plt.axvline(95.07, ls='-', c='k')
     plt.axvline(90.19, ls='--', c='k')
     plt.plot()
@@ -225,9 +226,9 @@ def plot_spikes(path_to_save: str,
     start : int
         Starting index for the examples to display. Must be non-negative
     stop : int
-        Stopping index for the examples to display. Must have stop > start.
+        Stopping index for the examples to display. Must have: stop > start.
     labels : list
-        List of the output labels.
+        Output labels.
     simulator :
         NengoDL simulator (https://www.nengo.ai/nengo-dl/reference.html#nengo_dl.Simulator)
     data :
@@ -308,9 +309,9 @@ def plot_timestep_accuracy(synapses: list,
     Parameters
     ----------
     synapses : list
-        List of synapse values. Must be non-empty.
+        Synapse values. Must be non-empty.
     scales : list
-        List of firing rate scaling factors. Must be non-empty.
+        Firing rate scaling factors. Must be non-empty.
     timesteps :
         List of time steps. Must be non-empty.
     accuracies : ndarray
@@ -396,9 +397,9 @@ def visualize_data(data, class_names: list):
     Parameters
     ----------
     data :
-        tf.dataset object with images and labels batched.
+        Dataset object with images and labels batched.
     class_names : list
-        List of strings corresponding to class names of the dataset.
+        Strings corresponding to class names of the dataset.
     """
 
     # Make figure
