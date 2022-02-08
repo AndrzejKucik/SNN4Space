@@ -7,8 +7,8 @@
 __author__ = 'Andrzej S. Kucik'
 __copyright__ = 'European Space Agency'
 __contact__ = 'andrzej.kucik@esa.int'
-__version__ = '0.3.2'
-__date__ = '2022-01-28'
+__version__ = '0.3.1'
+__date__ = '2022-02-08'
 
 # -- Built-in modules -- #
 import sys
@@ -99,13 +99,14 @@ if __name__ == '__main__':
             callbacks.append(DTStop(dt=dt_var, dt_min=DT_TARGET))
 
         # Print the training iteration parameters
-        print(f"Starting the training for {colour_str(epochs, 'orange')} epoch(s),"
-              f"with {colour_str(timesteps, 'orange')} timestep(s)",
-              f"on batches of {colour_str(batch_size, 'orange')} example(s),"
+        print(f"Starting the training for {colour_str(epochs, 'orange')} epoch(s),",
+              f"with {colour_str(timesteps, 'orange')} timestep(s),",
+              f"on batches of {colour_str(batch_size, 'orange')} example(s),",
               f"and the learning rate {colour_str(lr, 'orange')}.")
 
         # Train the model
-        print(f'Commencing the training on iteration', colour_str(f'{min(n + 1, exponent)}/{exponent}', 'orange') + '.')
+        print(f'Commencing the training on iteration',
+              colour_str(f'{n - start + 1}/{exponent + 1 - start}', 'orange') + '.')
         model.fit(x=train, epochs=epochs, validation_data=val, callbacks=callbacks)
 
         # Evaluate the model
